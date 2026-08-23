@@ -22,3 +22,10 @@ func Int64OrNull(i int) types.Int64 {
 	}
 	return types.Int64Value(int64(i))
 }
+
+func Float64OrNull(f float64) types.Float64 {
+	if f == 0 {
+		return types.Float64Null()
+	}
+	return types.Float64Value(f)
+}
