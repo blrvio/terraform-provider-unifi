@@ -30,6 +30,7 @@ import (
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/scheduletask"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/settings"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/tag"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/trafficflow"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/trafficlist"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
@@ -289,5 +290,24 @@ func (p *unifiProvider) DataSources(_ context.Context) []func() datasource.DataS
 		officialro.NewSiteToSiteTunnelDataSource,
 		officialro.NewSwitchLAGDataSource,
 		officialro.NewDeviceTagDataSource,
+		officialro.NewClientsDataSource,
+		officialro.NewClientDataSource,
+		officialro.NewOfficialDevicesDataSource,
+		officialro.NewOfficialDeviceDataSource,
+		officialro.NewDeviceStatisticsDataSource,
+		officialro.NewPendingDevicesDataSource,
+		officialro.NewNetworksDataSource,
+		officialro.NewNetworkReferencesDataSource,
+		officialro.NewDPIApplicationsDataSource,
+		officialro.NewDPIApplicationCategoriesDataSource,
+		officialro.NewCountriesDataSource,
+		officialro.NewRadiusProfilesDataSource,
+		officialro.NewSwitchLAGsDataSource,
+		officialro.NewMcLagDomainsDataSource,
+		officialro.NewMcLagDomainDataSource,
+		officialro.NewSwitchStacksDataSource,
+		officialro.NewSwitchStackDataSource,
+		officialro.NewControllerInfoDataSource,
+		trafficflow.NewTrafficFlowsDataSource,
 	}
 }

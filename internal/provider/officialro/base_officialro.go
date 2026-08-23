@@ -1,17 +1,20 @@
 // Package officialro contains read-only Terraform Plugin Framework data sources
 // backed by the UniFi Official API (integration/v1). The entities exposed here
-// (WANs, VPN servers, site-to-site tunnels, switch LAGs, device tags) are
-// list-only on the Official API and are not writable, so they are surfaced as
-// data sources rather than resources.
+// (WANs, VPN servers, site-to-site tunnels, switch LAGs, device tags, connected
+// clients, adopted/pending devices, networks, DPI catalogs, countries, RADIUS
+// profiles, MC-LAG domains, switch stacks and controller info) are read-only on
+// the Official API and are surfaced as data sources rather than resources.
 package officialro
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 )
@@ -62,6 +65,20 @@ func (d *officialBase) prepare(ctx context.Context, siteName string) (siteID uui
 	return id, resolvedName, diags
 }
 
+// prepareVersionOnly runs the Read preamble for the site-independent Official-API
+// endpoints (controller info, pending devices, countries, DPI catalogs): it checks
+// the provider is configured and gates on the minimum controller version that
+// exposes the Official API, but does NOT resolve a site UUID.
+func (d *officialBase) prepareVersionOnly(_ context.Context) diag.Diagnostics {
+	var diags diag.Diagnostics
+	diags.Append(base.CheckConfigured(d.client)...)
+	if diags.HasError() {
+		return diags
+	}
+	diags.Append(d.RequireMinVersion(base.ControllerVersionOfficialAPI.String())...)
+	return diags
+}
+
 // siteAttribute is the standard Optional+Computed site attribute for the
 // read-only data sources. It cannot reuse types.SiteAttribute because that
 // returns a resource/schema attribute, not a datasource/schema one.
@@ -70,6 +87,16 @@ func siteAttribute() schema.StringAttribute {
 		MarkdownDescription: "The name of the UniFi site to query. If not specified, the provider's default site is used.",
 		Optional:            true,
 		Computed:            true,
+	}
+}
+
+// filterAttribute is the standard Optional server-side filter attribute for the
+// list data sources. The subject names the collection being filtered so the
+// generated docs read naturally.
+func filterAttribute(subject string) schema.StringAttribute {
+	return schema.StringAttribute{
+		MarkdownDescription: "An optional Official-API filter expression applied server-side when listing " + subject + ".",
+		Optional:            true,
 	}
 }
 
@@ -85,6 +112,42 @@ func findByID[T any](items []T, id string, idOf func(T) string) (T, bool) {
 	}
 	var zero T
 	return zero, false
+}
+
+// stringPtrValue maps an optional Official-API string field to a Framework value,
+// yielding a null string when the pointer is nil.
+func stringPtrValue(p *string) types.String {
+	if p == nil {
+		return types.StringNull()
+	}
+	return types.StringValue(*p)
+}
+
+// timePtrValue maps an optional Official-API timestamp to an RFC 3339 Framework
+// string, yielding a null string when the pointer is nil.
+func timePtrValue(p *time.Time) types.String {
+	if p == nil {
+		return types.StringNull()
+	}
+	return types.StringValue(p.Format(time.RFC3339))
+}
+
+// float64PtrValue maps an optional Official-API float to a Framework value,
+// yielding a null when the pointer is nil.
+func float64PtrValue(p *float64) types.Float64 {
+	if p == nil {
+		return types.Float64Null()
+	}
+	return types.Float64Value(*p)
+}
+
+// int64PtrValue maps an optional Official-API int64 to a Framework value,
+// yielding a null when the pointer is nil.
+func int64PtrValue(p *int64) types.Int64 {
+	if p == nil {
+		return types.Int64Null()
+	}
+	return types.Int64Value(*p)
 }
 
 // uuidsToStrings converts a slice of Official-API UUIDs to their canonical
