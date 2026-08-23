@@ -20,18 +20,28 @@ import (
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/broadcastgroup"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/channelplan"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/contentfiltering"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/dashboard"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/dhcpoption"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/dns"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/feature"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/firewall"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/heatmap"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/heatmappoint"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspot"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspot2conf"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspotop"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspotpackage"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/mediafile"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialfw"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialro"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/portal"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/scheduletask"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/settings"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/spatialrecord"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/tag"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/trafficflow"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/trafficlist"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/unifimap"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/virtualdevice"
@@ -218,6 +228,15 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		dhcpoption.NewDHCPOptionResource,
 		scheduletask.NewScheduleTaskResource,
 		tag.NewTagResource,
+		heatmap.NewHeatMapResource,
+		heatmappoint.NewHeatMapPointResource,
+		unifimap.NewMapResource,
+		spatialrecord.NewSpatialRecordResource,
+		mediafile.NewMediaFileResource,
+		dashboard.NewDashboardResource,
+		hotspot2conf.NewHotspot2ConfResource,
+		hotspotop.NewHotspotOperatorResource,
+		hotspotpackage.NewHotspotPackageResource,
 		virtualdevice.NewVirtualDeviceResource,
 		wlangroup.NewWLANGroupResource,
 		dns.NewDNSRecordResource,
@@ -281,6 +300,22 @@ func (p *unifiProvider) DataSources(_ context.Context) []func() datasource.DataS
 	return []func() datasource.DataSource{
 		apgroup.NewAPGroupDatasource,
 		tag.NewTagDatasource,
+		heatmap.NewHeatMapDatasource,
+		heatmap.NewHeatMapsDatasource,
+		heatmappoint.NewHeatMapPointDatasource,
+		unifimap.NewMapDatasource,
+		unifimap.NewMapsDatasource,
+		spatialrecord.NewSpatialRecordDatasource,
+		mediafile.NewMediaFileDatasource,
+		dashboard.NewDashboardDatasource,
+		dashboard.NewDashboardsDatasource,
+		hotspot2conf.NewHotspot2ConfDatasource,
+		hotspotop.NewHotspotOperatorDatasource,
+		hotspotpackage.NewHotspotPackageDatasource,
+		hotspotpackage.NewHotspotPackagesDatasource,
+		feature.NewFeatureDatasource,
+		feature.NewFeaturesDatasource,
+		feature.NewSystemInformationDatasource,
 		wlangroup.NewWLANGroupDatasource,
 		dns.NewDNSRecordsDatasource,
 		dns.NewDNSRecordDatasource,
