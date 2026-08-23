@@ -120,6 +120,6 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/filipowm/terraform-provider-unifi
+        - github.com/blrvio/terraform-provider-unifi
   exclusions:
     generated: lax

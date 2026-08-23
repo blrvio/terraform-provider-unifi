@@ -112,7 +112,7 @@ This provider is a fork of the original [paultyng/terraform-provider-unifi](http
 
 ### Key Differences and Improvements
 
-| Feature | paultyng/unifi | filipowm/unifi |
+| Feature | paultyng/unifi | blrvio/unifi |
 |---------|---------------|----------------|
 | Framework | Terraform SDK v2 | Terraform Plugin Framework |
 | Controller Support | UniFi Controller v6.x | UniFi Controller v6.x and later (including v9.x) |
@@ -127,14 +127,14 @@ This provider is a fork of the original [paultyng/terraform-provider-unifi](http
 
 1. **Update Provider Configuration**
 
-   Change your provider source from `paultyng/unifi` to `filipowm/unifi`:
+   Change your provider source from `paultyng/unifi` to `blrvio/unifi`:
 
    ```hcl
    terraform {
      required_providers {
        unifi = {
-         source  = "filipowm/unifi"
-         version = "~> 0.0.1"  # Use the latest version
+         source  = "blrvio/unifi"
+         version = "~> 1.0.0"  # Use the latest version
        }
      }
    }
@@ -240,6 +240,6 @@ For developers extending or customizing the provider:
 
 If you encounter issues during migration:
 
-1. Check the [documentation](https://registry.terraform.io/providers/filipowm/unifi/latest/docs)
-2. Review examples in the [GitHub repository](https://github.com/filipowm/terraform-provider-unifi)
+1. Check the [documentation](https://registry.terraform.io/providers/blrvio/unifi/latest/docs)
+2. Review examples in the [GitHub repository](https://github.com/blrvio/terraform-provider-unifi)
 3. Open an issue on GitHub for assistance

@@ -1,7 +1,7 @@
-![Latest](https://img.shields.io/github/v/release/filipowm/terraform-provider-unifi)
-[![Docs](https://img.shields.io/badge/docs-reference-blue)](https://registry.terraform.io/providers/filipowm/unifi/latest)
-![Acceptance Tests](https://github.com/filipowm/terraform-provider-unifi/workflows/Acceptance%20Tests/badge.svg?event=push)
-![License](https://img.shields.io/github/license/filipowm/terraform-provider-unifi)
+![Latest](https://img.shields.io/github/v/release/blrvio/terraform-provider-unifi)
+[![Docs](https://img.shields.io/badge/docs-reference-blue)](https://registry.terraform.io/providers/blrvio/unifi/latest)
+![Acceptance Tests](https://github.com/blrvio/terraform-provider-unifi/workflows/Acceptance%20Tests/badge.svg?event=push)
+![License](https://img.shields.io/github/license/blrvio/terraform-provider-unifi)
 
 # UniFi Terraform Provider
 
@@ -26,13 +26,13 @@ Use a hard-wired connection to your controller to use this provider.
 
 ## Installation
 
-The provider is available in the [Terraform Registry](https://registry.terraform.io/providers/filipowm/unifi/latest). To use it in your Terraform configuration:
+The provider is available in the [Terraform Registry](https://registry.terraform.io/providers/blrvio/unifi/latest). To use it in your Terraform configuration:
 
 ```hcl
 terraform {
     required_providers {
         unifi = {
-            source  = "filipowm/unifi"
+            source  = "blrvio/unifi"
             version = "~> 1.0.0"  # Use the latest version
         }
     }
@@ -88,11 +88,11 @@ resource "unifi_network" "vlan_50" {
 }
 ```
 
-More examples can be found in the [documentation](https://registry.terraform.io/providers/filipowm/unifi/latest/docs).
+More examples can be found in the [documentation](https://registry.terraform.io/providers/blrvio/unifi/latest/docs).
 
 ## Documentation
 
-Comprehensive documentation is available on the [Terraform Registry](https://registry.terraform.io/providers/filipowm/unifi/latest/docs)
+Comprehensive documentation is available on the [Terraform Registry](https://registry.terraform.io/providers/blrvio/unifi/latest/docs)
 
 ## Supported Platforms
 
@@ -116,14 +116,14 @@ Comprehensive documentation is available on the [Terraform Registry](https://reg
 - [x] Implement validation for fields and structures
 - [x] Increase test coverage and make tests more reliable
 - [x] Update all dependencies to the latest versions
-- [x] Switch to [filipowm/go-unifi](https://github.com/filipowm/go-unifi) SDK
+- [x] Switch to [blrvio/go-unifi](https://github.com/blrvio/go-unifi) SDK
 - [x] Support newest controller versions (9.x)
 
 ## Contributing
 
 Contributions are welcome! Please follow [contributing guide](./.github/CONTRIBUTING.md).
 
-The provider is built on top of the [go-unifi](https://github.com/filipowm/go-unifi) SDK.
+The provider is built on top of the [go-unifi](https://github.com/blrvio/go-unifi) SDK.
 
 ## License
 
@@ -131,7 +131,7 @@ This provider is licensed under the [LICENSE](./LICENSE) file.
 
 ## Acknowledgements
 
-This project is a fork of [paultyng/terraform-provider-unifi](https://github.com/paultyng/terraform-provider-unifi). We extend our heartfelt gratitude to Paul Tyng and all the contributors of the original provider for their outstanding work. Their efforts have laid a solid foundation for this fork.
+This provider is maintained by [Black Ravine](https://github.com/blrvio) (`blrvio`). It is a fork of [filipowm/terraform-provider-unifi](https://github.com/filipowm/terraform-provider-unifi), which is itself a fork of the original [paultyng/terraform-provider-unifi](https://github.com/paultyng/terraform-provider-unifi). We extend our heartfelt gratitude to Paul Tyng, Mateusz Filipowicz, and all the contributors of the upstream providers for their outstanding work. Their efforts laid a solid foundation for this fork.
 
 Our goal with this fork is to build upon their excellent work by:
 

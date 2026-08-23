@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
-	ut "github.com/filipowm/terraform-provider-unifi/internal/provider/types"
+	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
 )
 
 func TestMACValueStringSemanticEquals(t *testing.T) {

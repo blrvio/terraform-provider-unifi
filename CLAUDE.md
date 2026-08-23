@@ -1,7 +1,9 @@
 # UniFi Terraform Provider
 
-Terraform provider for Ubiquiti UniFi network controllers (versions 6.x–9.x), built on the
-[`filipowm/go-unifi`](https://github.com/filipowm/go-unifi) SDK. Fork of `paultyng/terraform-provider-unifi`.
+Terraform provider for Ubiquiti UniFi network controllers (versions 6.x–9.x), maintained by
+Black Ravine (`blrvio`) and built on the [`blrvio/go-unifi`](https://github.com/blrvio/go-unifi) SDK.
+Fork of [`filipowm/terraform-provider-unifi`](https://github.com/filipowm/terraform-provider-unifi),
+itself a fork of the original `paultyng/terraform-provider-unifi`.
 
 Stack: Go 1.25.8 · terraform-plugin-framework v1.19.0 · terraform-plugin-sdk/v2 v2.40.1 ·
 terraform-plugin-mux v0.23.1 · terraform-plugin-testing v1.16.0 · go-unifi v1.9.3.

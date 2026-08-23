@@ -5,16 +5,16 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 
-	ut "github.com/filipowm/terraform-provider-unifi/internal/provider/types"
+	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
 
-	"github.com/filipowm/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/base"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/validators"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
 )
 
 type localeModel struct {

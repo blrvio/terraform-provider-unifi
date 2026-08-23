@@ -5,15 +5,15 @@ import (
 	"errors"
 	"regexp"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/utils"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/validators"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
 
-	"github.com/filipowm/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/base"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 )
 
 var (

@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/base"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 )
 
 func TestAsVersion(t *testing.T) {

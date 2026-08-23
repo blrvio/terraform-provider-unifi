@@ -11,16 +11,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/logging"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/base"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/device"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/dns"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/firewall"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/network"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/radius"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/routing"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/settings"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/site"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/user"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/device"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/dns"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/firewall"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/network"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/radius"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/routing"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/settings"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/site"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/user"
 )
 
 const (

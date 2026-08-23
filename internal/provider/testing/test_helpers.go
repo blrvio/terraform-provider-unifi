@@ -8,12 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/filipowm/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/utils"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 )
 
 const TfAccLocal = "TF_ACC_LOCAL"

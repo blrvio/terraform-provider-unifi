@@ -13,15 +13,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/filipowm/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	ut "github.com/filipowm/terraform-provider-unifi/internal/provider/types"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/utils"
+	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 )
 
 type ClientConfig struct {

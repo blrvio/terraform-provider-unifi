@@ -1,16 +1,16 @@
-module github.com/filipowm/terraform-provider-unifi
+module github.com/blrvio/terraform-provider-unifi
 
 go 1.25.11
 
-//replace github.com/filipowm/go-unifi v1.8.0 => ../go-unifi
+//replace github.com/blrvio/go-unifi v1.8.0 => ../go-unifi
 // replace github.com/hashicorp/terraform-plugin-docs => ../../hashicorp/terraform-plugin-docs
 // replace github.com/hashicorp/terraform-plugin-sdk/v2 => ../../hashicorp/terraform-plugin-sdk
 
 require (
 	github.com/apparentlymart/go-cidr v1.1.1
 	github.com/biter777/countries v1.7.5
+	github.com/blrvio/go-unifi v1.9.3
 	github.com/deckarep/golang-set/v2 v2.9.0
-	github.com/filipowm/go-unifi v1.9.3
 	github.com/hashicorp/go-cty v1.5.0
 	github.com/hashicorp/go-version v1.9.0
 	github.com/hashicorp/terraform-plugin-docs v0.25.0

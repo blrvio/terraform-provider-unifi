@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/filipowm/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 

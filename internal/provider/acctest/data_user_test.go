@@ -9,10 +9,10 @@ import (
 	"github.com/apparentlymart/go-cidr/cidr"
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 
-	"github.com/filipowm/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	pt "github.com/filipowm/terraform-provider-unifi/internal/provider/testing"
+	pt "github.com/blrvio/terraform-provider-unifi/internal/provider/testing"
 )
 
 func TestAccDataUser_default(t *testing.T) {

@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/filipowm/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/base"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 )
 
 // fakePortProfileClient is a minimal unifi.Client used to drive resourcePortProfileUpdate

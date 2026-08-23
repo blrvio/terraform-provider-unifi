@@ -3,7 +3,7 @@ package radius
 import (
 	"testing"
 
-	"github.com/filipowm/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 

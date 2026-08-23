@@ -14,14 +14,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/apgroup"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/base"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/dns"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/firewall"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/portal"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/settings"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/utils"
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/validators"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/apgroup"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/dns"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/firewall"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/portal"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/settings"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
 )
 
 func NewV2(version string) func() provider.Provider {

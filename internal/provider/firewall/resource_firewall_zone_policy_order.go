@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/filipowm/go-unifi/unifi"
-	"github.com/filipowm/go-unifi/unifi/features"
+	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/unifi/features"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -18,8 +18,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/filipowm/terraform-provider-unifi/internal/provider/base"
-	ut "github.com/filipowm/terraform-provider-unifi/internal/provider/types"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
+	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
 )
 
 var (
