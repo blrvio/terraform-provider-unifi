@@ -28,6 +28,11 @@ var (
 	// https://community.ui.com/releases/UniFi-Network-Application-8-2-93/fce86dc6-897a-4944-9c53-1eec7e37e738
 	ControllerVersionDNSRecords = AsVersion("8.2.93")
 
+	// ControllerVersionOfficialAPI is the minimum controller version exposing the
+	// Official UniFi API (integration/v1). Below it, go-unifi's Official() gate
+	// returns unifi.ErrOfficialAPIUnavailable.
+	ControllerVersionOfficialAPI = AsVersion("10.1.78")
+
 	// https://community.ui.com/releases/UniFi-Network-Controller-6-1-61/62f1ad38-1ac5-430c-94b0-becbb8f71d7d
 	ControllerVersionWPA3 = AsVersion("6.1.61")
 )
@@ -42,6 +47,14 @@ func (c *Client) SupportsWPA3() bool {
 
 func (c *Client) SupportsDNSRecords() bool {
 	return c.Version.GreaterThanOrEqual(ControllerVersionDNSRecords)
+}
+
+// SupportsOfficialAPI reports whether the controller version is new enough to
+// expose the Official UniFi API (integration/v1). It is a cheap, version-only
+// pre-check; the authoritative gate lives in go-unifi's Official() and also
+// rejects old-style controllers and DisableOfficialAPI.
+func (c *Client) SupportsOfficialAPI() bool {
+	return c.Version.GreaterThanOrEqual(ControllerVersionOfficialAPI)
 }
 
 func CheckMinimumControllerVersion(versionString string) error {

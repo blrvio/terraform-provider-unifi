@@ -80,6 +80,7 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	if !c.SupportsAPIKeyAuthentication() {
 		return nil, fmt.Errorf("API key authentication is not supported on this controller version: %s, you must be on %s or higher", c.Version, ControllerVersionAPIKeyAuth)
 	}
+	c.OfficialAvailable = c.SupportsOfficialAPI()
 	return c, nil
 }
 
@@ -87,6 +88,11 @@ type Client struct {
 	unifi.Client
 	Site    string
 	Version *version.Version
+	// OfficialAvailable is a cheap, version-only capability flag for the Official
+	// UniFi API (integration/v1), resolved once at configuration time. The
+	// authoritative gate still lives in the go-unifi Official() layer. See
+	// official.go (RequireOfficialAPI / OfficialAPIErrorDiagnostics).
+	OfficialAvailable bool
 }
 
 func (c *Client) ResolveSite(res SiteAware) string {
