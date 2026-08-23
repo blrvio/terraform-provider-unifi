@@ -14,14 +14,20 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/acl"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/apgroup"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/dns"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/firewall"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspot"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialfw"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialro"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/portal"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/settings"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/trafficlist"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/wifibroadcast"
 )
 
 func NewV2(version string) func() provider.Provider {
@@ -194,8 +200,17 @@ func (p *unifiProvider) Configure(ctx context.Context, req provider.ConfigureReq
 
 func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		acl.NewACLRuleResource,
+		acl.NewACLRuleOrderResource,
 		apgroup.NewAPGroupResource,
 		dns.NewDNSRecordResource,
+		dns.NewDNSPolicyResource,
+		hotspot.NewHotspotVoucherResource,
+		trafficlist.NewTrafficMatchingListResource,
+		wifibroadcast.NewWifiBroadcastResource,
+		officialfw.NewOfficialFirewallZoneResource,
+		officialfw.NewOfficialFirewallPolicyResource,
+		officialfw.NewOfficialFirewallPolicyOrderResource,
 		firewall.NewFirewallZoneResource,
 		firewall.NewFirewallZonePolicyResource,
 		firewall.NewFirewallZonePolicyOrderResource,
@@ -228,5 +243,10 @@ func (p *unifiProvider) DataSources(_ context.Context) []func() datasource.DataS
 		dns.NewDNSRecordsDatasource,
 		dns.NewDNSRecordDatasource,
 		firewall.NewFirewallZoneDatasource,
+		officialro.NewWANDataSource,
+		officialro.NewVPNServerDataSource,
+		officialro.NewSiteToSiteTunnelDataSource,
+		officialro.NewSwitchLAGDataSource,
+		officialro.NewDeviceTagDataSource,
 	}
 }

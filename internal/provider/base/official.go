@@ -121,6 +121,28 @@ func resolveSiteUUID(ctx context.Context, oc official.Client, site string) (uuid
 	return id, diags
 }
 
+// CheckConfigured reports a diagnostic when the provider client was not wired up
+// (Configure not run). Exported for the custom-CRUD Official-API resources.
+func CheckConfigured(c *Client) diag.Diagnostics {
+	return checkClientConfigured(c)
+}
+
+// ResolveSiteAndID resolves a site name to its Official-API UUID and parses an
+// entity id string into a UUID, returning both. It is the common preamble for
+// Official-API resource Read/Update/Delete handlers.
+func (c *Client) ResolveSiteAndID(ctx context.Context, siteName, id string) (siteID uuid.UUID, entityID uuid.UUID, diags diag.Diagnostics) {
+	siteID, diags = c.ResolveSiteUUID(ctx, siteName)
+	if diags.HasError() {
+		return uuid.UUID{}, uuid.UUID{}, diags
+	}
+	entityID, err := uuid.Parse(id)
+	if err != nil {
+		diags.AddError("Invalid resource ID", fmt.Sprintf("Could not parse %q as a UUID: %s", id, err))
+		return uuid.UUID{}, uuid.UUID{}, diags
+	}
+	return siteID, entityID, diags
+}
+
 // CollectAll drains an Official-API paginated iterator (a ListXxxAll result) into
 // a slice, short-circuiting on the first error. It is a thin wrapper over
 // official.Collect kept here so resources and data sources have a single import
