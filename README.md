@@ -18,10 +18,14 @@ Use a hard-wired connection to your controller to use this provider.
 - Compatible with UDM, UDM-Pro, UCG, and standard controller deployments
 - Comprehensive resource management including:
     - Network/WLAN configuration
-    - Firewall rules
+    - Firewall rules (zone-based and legacy)
     - Port forwarding
-    - DNS records
+    - DNS records and policies
     - User management
+    - Maps, heat maps and spatial records (site/floor-plan layout)
+    - Custom dashboards
+    - Hotspot 2.0 (Passpoint) configuration, operators and packages
+    - Controller feature discovery and system information (data sources)
     - And more...
 
 ## Installation

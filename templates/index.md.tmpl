@@ -21,6 +21,10 @@ The UniFi provider enables infrastructure-as-code management of [Ubiquiti's UniF
     - DNS records
     - User management
     - Device management
+    - Maps, heat maps and spatial records (site/floor-plan layout)
+    - Custom dashboards
+    - Hotspot 2.0 (Passpoint) configuration, operators and packages
+    - Controller feature discovery and system information (data sources)
     - And more...
 
 ## Supported Platforms
