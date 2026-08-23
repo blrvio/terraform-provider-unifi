@@ -17,17 +17,25 @@ import (
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/acl"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/apgroup"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/broadcastgroup"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/channelplan"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/contentfiltering"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/dhcpoption"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/dns"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/firewall"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspot"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialfw"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialro"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/portal"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/scheduletask"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/settings"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/tag"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/trafficlist"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/virtualdevice"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/wifibroadcast"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/wlangroup"
 )
 
 func NewV2(version string) func() provider.Provider {
@@ -203,6 +211,14 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		acl.NewACLRuleResource,
 		acl.NewACLRuleOrderResource,
 		apgroup.NewAPGroupResource,
+		broadcastgroup.NewBroadcastGroupResource,
+		channelplan.NewChannelPlanResource,
+		contentfiltering.NewContentFilteringResource,
+		dhcpoption.NewDHCPOptionResource,
+		scheduletask.NewScheduleTaskResource,
+		tag.NewTagResource,
+		virtualdevice.NewVirtualDeviceResource,
+		wlangroup.NewWLANGroupResource,
 		dns.NewDNSRecordResource,
 		dns.NewDNSPolicyResource,
 		hotspot.NewHotspotVoucherResource,
@@ -263,6 +279,8 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 func (p *unifiProvider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		apgroup.NewAPGroupDatasource,
+		tag.NewTagDatasource,
+		wlangroup.NewWLANGroupDatasource,
 		dns.NewDNSRecordsDatasource,
 		dns.NewDNSRecordDatasource,
 		firewall.NewFirewallZoneDatasource,
