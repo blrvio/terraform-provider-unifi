@@ -25,9 +25,6 @@ resource "unifi_setting_ips" "example" {
     "emerging-malware"
   ]
   
-  # Ad blocking configuration
-  ad_blocked_networks = [unifi_network.test.id]
-  
   # Honeypot configuration
   honeypots = [
     {
@@ -35,33 +32,11 @@ resource "unifi_setting_ips" "example" {
       network_id = unifi_network.test.id
     }
   ]
-  
-  # DNS filtering configuration
-  dns_filters = [
-    {
-      name        = "Work Filter"
-      filter      = "work"
-      description = "Block non-work related sites"
-      
-      # Sites that are always allowed
-      allowed_sites = [
-        "example.com",
-        "company.com"
-      ]
-      
-      # Sites that are always blocked
-      blocked_sites = [
-        "gaming.example.com",
-        "social.example.com"
-      ]
-      
-      # Top-level domains to block
-      blocked_tld = [
-        "xyz"
-      ]
-    }
-  ]
-  
+
+  # Note: ad blocking and per-network DNS filtering were removed from the IPS
+  # setting in controller v10+ (go-unifi v10). Manage those via DNS policies /
+  # content filtering instead.
+
   # Specify the site (optional, defaults to site configured in provider, otherwise "default")
   # site = "default"
 }

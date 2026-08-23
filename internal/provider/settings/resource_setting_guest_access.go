@@ -24,7 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/v10/unifi"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"

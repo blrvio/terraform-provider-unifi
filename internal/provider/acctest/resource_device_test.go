@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/v10/unifi"
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"

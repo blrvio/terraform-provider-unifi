@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/v10/unifi"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"

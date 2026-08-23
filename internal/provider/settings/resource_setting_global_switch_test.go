@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/v10/unifi"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"

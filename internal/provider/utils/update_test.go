@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/v10/unifi"
 	"github.com/stretchr/testify/assert"
 )
 

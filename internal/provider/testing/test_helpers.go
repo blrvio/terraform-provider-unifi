@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/v10/unifi"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -74,8 +74,7 @@ func SiteAndIDImportStateIDFunc(resourceName string) func(*terraform.State) (str
 func PreCheck(t *testing.T) {
 	t.Helper()
 	variables := []string{
-		"UNIFI_USERNAME",
-		"UNIFI_PASSWORD",
+		"UNIFI_API_KEY",
 		"UNIFI_API",
 	}
 

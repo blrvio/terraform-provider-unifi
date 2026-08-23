@@ -56,14 +56,19 @@ func (p *unifiProvider) Metadata(_ context.Context, _ provider.MetadataRequest, 
 func (p *unifiProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
+			// The SDKv2 provider (provider.go) appends the `Deprecated` marker to the
+			// rendered description via SchemaDescriptionBuilder. The muxed providers must
+			// expose byte-identical schemas, so mirror that suffix here explicitly.
 			"username": schema.StringAttribute{
-				MarkdownDescription: ProviderUsernameDescription,
+				MarkdownDescription: ProviderUsernameDescription + " " + ProviderUserPassDeprecated,
 				Optional:            true,
+				DeprecationMessage:  ProviderUserPassDeprecated,
 			},
 			"password": schema.StringAttribute{
-				MarkdownDescription: ProviderPasswordDescription,
+				MarkdownDescription: ProviderPasswordDescription + " " + ProviderUserPassDeprecated,
 				Optional:            true,
 				Sensitive:           true,
+				DeprecationMessage:  ProviderUserPassDeprecated,
 			},
 			"api_key": schema.StringAttribute{
 				MarkdownDescription: ProviderAPIKeyDescription,
@@ -157,10 +162,11 @@ func (p *unifiProvider) Configure(ctx context.Context, req provider.ConfigureReq
 	if !cfg.MaxRetries.IsNull() {
 		maxRetries = int(cfg.MaxRetries.ValueInt64())
 	}
-	if apiKey != "" && (username != "" || password != "") {
-		resp.Diagnostics.AddAttributeError(path.Root("api_key"), "Two authentication methods configured", "Only one of `username`/`password` or `api_key` can be set")
-	} else if apiKey == "" && (username == "" || password == "") {
-		resp.Diagnostics.AddAttributeError(path.Root("api_key"), "Missing UniFi API credentials", "Either `username`/`password` or `api_key` must be set")
+	if username != "" || password != "" {
+		resp.Diagnostics.AddAttributeError(path.Root("api_key"), "Username/password authentication is no longer supported",
+			"Username/password authentication was removed in go-unifi v10. Unset `username`/`password` (and UNIFI_USERNAME/UNIFI_PASSWORD) and configure `api_key` (or UNIFI_API_KEY) instead.")
+	} else if apiKey == "" {
+		resp.Diagnostics.AddAttributeError(path.Root("api_key"), "Missing UniFi API key", "The `api_key` attribute (or UNIFI_API_KEY) must be set.")
 	}
 	if apiURL == "" {
 		resp.Diagnostics.AddAttributeError(path.Root("api_url"), "Missing UniFi API URL", "The `api_url` attribute must be set")
@@ -172,8 +178,6 @@ func (p *unifiProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		site = "default" // set default site if not provided
 	}
 	c, err := base.NewClient(&base.ClientConfig{
-		Username:   username,
-		Password:   password,
 		APIKey:     apiKey,
 		URL:        apiURL,
 		Site:       site,

@@ -39,9 +39,6 @@ resource "unifi_setting_ips" "example" {
     "emerging-malware"
   ]
   
-  # Ad blocking configuration
-  ad_blocked_networks = [unifi_network.test.id]
-  
   # Honeypot configuration
   honeypots = [
     {
@@ -49,33 +46,11 @@ resource "unifi_setting_ips" "example" {
       network_id = unifi_network.test.id
     }
   ]
-  
-  # DNS filtering configuration
-  dns_filters = [
-    {
-      name        = "Work Filter"
-      filter      = "work"
-      description = "Block non-work related sites"
-      
-      # Sites that are always allowed
-      allowed_sites = [
-        "example.com",
-        "company.com"
-      ]
-      
-      # Sites that are always blocked
-      blocked_sites = [
-        "gaming.example.com",
-        "social.example.com"
-      ]
-      
-      # Top-level domains to block
-      blocked_tld = [
-        "xyz"
-      ]
-    }
-  ]
-  
+
+  # Note: ad blocking and per-network DNS filtering were removed from the IPS
+  # setting in controller v10+ (go-unifi v10). Manage those via DNS policies /
+  # content filtering instead.
+
   # Specify the site (optional, defaults to site configured in provider, otherwise "default")
   # site = "default"
 }
@@ -86,11 +61,9 @@ resource "unifi_setting_ips" "example" {
 
 ### Optional
 
-- `ad_blocked_networks` (List of String) List of network IDs to enable ad blocking for. If any networks are configured, ad blocking will be automatically enabled. Each entry should be a valid network ID from your UniFi configuration. Leave empty to disable ad blocking.
 - `advanced_filtering_preference` (String) The advanced filtering preference for IPS. Valid values are:
   * `disabled` - Advanced filtering is disabled
   * `manual` - Advanced filtering is enabled and manually configured
-- `dns_filters` (Attributes List) DNS filters configuration. If any filters are configured, DNS filtering will be automatically enabled. Each filter can be applied to a specific network and provides content filtering capabilities. (see [below for nested schema](#nestedatt--dns_filters))
 - `enabled_categories` (List of String) List of enabled IPS threat categories. Each entry enables detection and prevention for a specific type of threat. The list of valid categories includes common threats like malware, exploits, scanning, and policy violations. See the validator for the complete list of available categories.
 - `enabled_networks` (List of String) List of network IDs to enable IPS protection for. Each entry should be a valid network ID from your UniFi configuration. IPS will only monitor and protect traffic on these networks.
 - `honeypots` (Attributes List) Honeypots configuration. Honeypots are decoy systems designed to detect, deflect, or study hacking attempts. They appear as legitimate parts of the network but are isolated and monitored. (see [below for nested schema](#nestedatt--honeypots))
@@ -107,26 +80,6 @@ resource "unifi_setting_ips" "example" {
 ### Read-Only
 
 - `id` (String) The unique identifier of this resource.
-
-<a id="nestedatt--dns_filters"></a>
-### Nested Schema for `dns_filters`
-
-Required:
-
-- `filter` (String) Filter type that determines the predefined filtering level. Valid values are:
-  * `none` - No predefined filtering
-  * `work` - Work-appropriate filtering that blocks adult content
-  * `family` - Family-friendly filtering that blocks adult content and other inappropriate sites
-- `name` (String) Name of the DNS filter. This is used to identify the filter in the UniFi interface.
-- `network_id` (String) Network ID this filter applies to. This should be a valid network ID from your UniFi configuration.
-
-Optional:
-
-- `allowed_sites` (List of String) List of allowed sites for this DNS filter. These domains will always be accessible regardless of other filtering rules. Each entry should be a valid domain name (e.g., `example.com`).
-- `blocked_sites` (List of String) List of blocked sites for this DNS filter. These domains will be blocked regardless of other filtering rules. Each entry should be a valid domain name (e.g., `example.com`).
-- `blocked_tld` (List of String) List of blocked top-level domains (TLDs) for this DNS filter. All domains with these TLDs will be blocked. Each entry should be a valid TLD without the dot prefix (e.g., `xyz`, `info`).
-- `description` (String) Description of the DNS filter. This is used for documentation purposes only and does not affect functionality.
-
 
 <a id="nestedatt--honeypots"></a>
 ### Nested Schema for `honeypots`

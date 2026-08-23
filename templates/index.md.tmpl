@@ -33,16 +33,14 @@ The UniFi provider enables infrastructure-as-code management of [Ubiquiti's UniF
 
 ## Authentication
 
-The provider supports two authentication methods:
+The provider authenticates exclusively with an **API Key** (requires controller version 9.0.108 or later).
 
-* **Username/Password Authentication** (Traditional method)
-* **API Key Authentication** (Recommended, requires controller version 9.0.108 or later)
+~> **Breaking change:** username/password authentication was removed in the go-unifi v10 based release. The `username`/`password` attributes (and `UNIFI_USERNAME`/`UNIFI_PASSWORD`) are deprecated and now raise a configuration error — migrate to `api_key` (or `UNIFI_API_KEY`).
 
 !> Hard-coding credentials into any Terraform configuration is not recommended, and risks secret leakage should this file ever be committed to a public version control system.
 
 ### Security Recommendations
 
-* Use API Key authentication instead of username/password
 * Create a dedicated service account for Terraform with appropriate permissions
 * Use a **Limited Admin** role with **Local Access Only**
 * Enable HTTPS and valid SSL certificates for your controller
@@ -65,9 +63,6 @@ The provider supports two authentication methods:
 Using API Key authentication:
 {{tffile "examples/provider/provider_api_key.tf"}}
 
-Using Username/Password authentication:
-{{tffile "examples/provider/provider_user_pass.tf"}}
-
 {{ .SchemaMarkdown | trimspace }}
 
 ## Migrating from paultyng/terraform-provider-unifi
@@ -80,7 +75,7 @@ This provider is a fork of the original [paultyng/terraform-provider-unifi](http
 |---------|---------------|----------------|
 | Framework | Terraform SDK v2 | Terraform Plugin Framework |
 | Controller Support | UniFi Controller v6.x | UniFi Controller v6.x and later (including v9.x) |
-| Authentication | Username/Password | Username/Password and API Key |
+| Authentication | Username/Password | API Key (username/password removed in v10) |
 | Resource Organization | Flat structure | Organized by domain (settings, dns, etc.) |
 | Validation | Basic | Enhanced with custom validators |
 | Documentation | Basic | Comprehensive with examples |
@@ -106,21 +101,13 @@ This provider is a fork of the original [paultyng/terraform-provider-unifi](http
 
 2. **Authentication Updates**
 
-   The provider configuration remains compatible, but now offers API Key authentication as an alternative to username/password:
+   Authentication is now **API Key only** (controller v9.0.108+). Username/password authentication
+   was removed in the go-unifi v10 based release — replace it with an API key:
 
    ```hcl
-   # Using API Key (recommended for newer controllers)
    provider "unifi" {
-     api_key = var.api_key
-     api_url = var.api_url
-     allow_insecure = var.insecure
-   }
-   
-   # Using Username/Password (backward compatible)
-   provider "unifi" {
-     username = var.username
-     password = var.password
-     api_url = var.api_url
+     api_key        = var.api_key
+     api_url        = var.api_url
      allow_insecure = var.insecure
    }
    ```

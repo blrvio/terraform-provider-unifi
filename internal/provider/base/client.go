@@ -10,10 +10,9 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/v10/unifi"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -21,12 +20,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
-	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 )
 
 type ClientConfig struct {
-	Username       string
-	Password       string
 	APIKey         string
 	URL            string
 	Site           string
@@ -40,11 +36,12 @@ type ClientConfig struct {
 }
 
 func NewClient(cfg *ClientConfig) (*Client, error) {
+	// go-unifi v10 is API-key only: user/password, Login/Logout, CSRF and
+	// RememberMe were removed, so there is no session to establish or refresh.
 	config := &unifi.ClientConfig{
 		URL:                      cfg.URL,
-		User:                     cfg.Username,
-		Password:                 cfg.Password,
 		APIKey:                   cfg.APIKey,
+		SkipVerifySSL:            cfg.Insecure,
 		HttpRoundTripperProvider: cfg.HTTPConfigurer,
 		ValidationMode:           unifi.DisableValidation,
 		Logger:                   unifi.NewDefaultLogger(unifi.WarnLevel),
@@ -66,13 +63,6 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 			return newRetryRoundTripper(next, maxRetries)
 		}
 	}
-	if cfg.Username != "" && cfg.Password != "" {
-		config.User = cfg.Username
-		config.Password = cfg.Password
-		config.RememberMe = true
-	} else {
-		config.APIKey = cfg.APIKey
-	}
 	unifiClient, err := unifi.NewClient(config)
 	if err != nil {
 		return nil, err
@@ -83,48 +73,14 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 		return nil, err
 	}
 	c := &Client{
-		Client:  NewRetryableUnifiClient(unifiClient),
+		Client:  unifiClient,
 		Site:    cfg.Site,
 		Version: version.Must(version.NewVersion(unifiClient.Version())),
 	}
-	if cfg.APIKey != "" && !c.SupportsAPIKeyAuthentication() {
+	if !c.SupportsAPIKeyAuthentication() {
 		return nil, fmt.Errorf("API key authentication is not supported on this controller version: %s, you must be on %s or higher", c.Version, ControllerVersionAPIKeyAuth)
 	}
 	return c, nil
-}
-
-func NewRetryableUnifiClient(client unifi.Client) unifi.Client {
-	return &RetryableUnifiClient{
-		Client:     client,
-		loginMutex: sync.Mutex{},
-	}
-}
-
-type RetryableUnifiClient struct {
-	unifi.Client
-	loginMutex sync.Mutex
-}
-
-func (c *RetryableUnifiClient) relogin(err error) error {
-	c.loginMutex.Lock()
-	defer c.loginMutex.Unlock()
-	loginErr := c.Login()
-	if loginErr != nil {
-		return fmt.Errorf("tried relogging in after %w, but failed: %w", err, loginErr)
-	}
-	return nil
-}
-
-func (c *RetryableUnifiClient) Do(ctx context.Context, method string, apiPath string, reqBody interface{}, respBody interface{}) error {
-	err := c.Client.Do(ctx, method, apiPath, reqBody, respBody)
-	if err != nil && utils.IsServerErrorStatusCode(err, 401) {
-		err := c.relogin(err)
-		if err != nil {
-			return err
-		}
-		return c.Client.Do(ctx, method, apiPath, reqBody, respBody)
-	}
-	return err
 }
 
 type Client struct {

@@ -24,10 +24,13 @@ import (
 )
 
 const (
-	ProviderUsernameDescription = "Local user name for the Unifi controller API. Can be specified with the `UNIFI_USERNAME` environment variable."
-	ProviderPasswordDescription = "Password for the user accessing the API. Can be specified with the `UNIFI_PASSWORD` environment variable."
-	ProviderAPIKeyDescription   = "API Key for the user accessing the API. Can be specified with the `UNIFI_API_KEY` environment variable. Controller version 9.0.108 or later is required." //nolint:gosec // G101 false positive: human-readable field description, not a credential
-	ProviderAPIURLDescription   = "URL of the controller API. Can be specified with the `UNIFI_API` environment variable. " +
+	ProviderUsernameDescription = "**Deprecated and no longer supported.** The provider now authenticates exclusively with an API key; username/password authentication was removed in go-unifi v10. Set `api_key` (or `UNIFI_API_KEY`) instead."
+	ProviderPasswordDescription = "**Deprecated and no longer supported.** The provider now authenticates exclusively with an API key; username/password authentication was removed in go-unifi v10. Set `api_key` (or `UNIFI_API_KEY`) instead."  //nolint:gosec // G101 false positive: human-readable field description, not a credential
+	ProviderAPIKeyDescription   = "API Key for the user accessing the API. Can be specified with the `UNIFI_API_KEY` environment variable. This is now the only supported authentication method; controller version 9.0.108 or later is required." //nolint:gosec // G101 false positive: human-readable field description, not a credential
+	// ProviderUserPassDeprecated is the schema Deprecated marker shared by the
+	// removed username/password attributes.
+	ProviderUserPassDeprecated = "Username/password authentication was removed in go-unifi v10. Use `api_key` instead."
+	ProviderAPIURLDescription  = "URL of the controller API. Can be specified with the `UNIFI_API` environment variable. " +
 		"You should **NOT** supply the path (`/api`), the SDK will discover the appropriate paths. This is to support UDM Pro style API paths as well as more standard controller paths."
 	ProviderSiteDescription          = "The site in the Unifi controller this provider will manage. Can be specified with the `UNIFI_SITE` environment variable. Default: `default`"
 	ProviderAllowInsecureDescription = "Skip verification of TLS certificates of API requests. You may need to set this to `true` " +
@@ -64,6 +67,7 @@ func New(version string) func() *schema.Provider {
 					Type:        schema.TypeString,
 					Optional:    true,
 					DefaultFunc: schema.EnvDefaultFunc("UNIFI_USERNAME", ""),
+					Deprecated:  ProviderUserPassDeprecated,
 				},
 				"password": {
 					Description: ProviderPasswordDescription,
@@ -71,6 +75,7 @@ func New(version string) func() *schema.Provider {
 					Optional:    true,
 					Sensitive:   true,
 					DefaultFunc: schema.EnvDefaultFunc("UNIFI_PASSWORD", ""),
+					Deprecated:  ProviderUserPassDeprecated,
 				},
 				"api_key": {
 					Description: ProviderAPIKeyDescription,
@@ -156,10 +161,11 @@ func configure(v string, p *schema.Provider) schema.ConfigureContextFunc {
 		if !ok {
 			return nil, diag.FromErr(errors.New("`api_key` must be a string"))
 		}
-		if apiKey != "" && (user != "" || pass != "") {
-			return nil, diag.FromErr(errors.New("only one of `username`/`password` or `api_key` can be set"))
-		} else if apiKey == "" && (user == "" || pass == "") {
-			return nil, diag.FromErr(errors.New("either `username` and `password` or `api_key` must be set"))
+		if user != "" || pass != "" {
+			return nil, diag.FromErr(errors.New("username/password authentication was removed in go-unifi v10; unset `username`/`password` (and UNIFI_USERNAME/UNIFI_PASSWORD) and configure `api_key` (or UNIFI_API_KEY) instead"))
+		}
+		if apiKey == "" {
+			return nil, diag.FromErr(errors.New("`api_key` (or UNIFI_API_KEY) must be set"))
 		}
 		baseURL, ok := d.Get("api_url").(string)
 		if !ok {
@@ -179,8 +185,6 @@ func configure(v string, p *schema.Provider) schema.ConfigureContextFunc {
 		}
 
 		c, err := base.NewClient(&base.ClientConfig{
-			Username:   user,
-			Password:   pass,
 			APIKey:     apiKey,
 			URL:        baseURL,
 			Site:       site,

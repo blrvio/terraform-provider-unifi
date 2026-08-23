@@ -17,9 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 
-	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
-
-	"github.com/blrvio/go-unifi/unifi"
+	"github.com/blrvio/go-unifi/v10/unifi"
 	tclog "github.com/testcontainers/testcontainers-go/log"
 	"github.com/testcontainers/testcontainers-go/modules/compose"
 )
@@ -258,34 +256,40 @@ func (te *TestEnvironment) waitForController(ctx context.Context) error {
 	}
 }
 
+// newTestClient builds the acceptance-test UniFi client. go-unifi v10 removed
+// username/password/Login/CSRF: the only supported authentication is an API key.
+// A fresh controller cannot mint a key through the SDK, so the key must be
+// supplied via UNIFI_ACCTEST_API_KEY (preferred) or UNIFI_API_KEY, pointing at a
+// controller that supports API-key auth (>= 9.0.108, new-style). When no key is
+// available the acceptance suite fails fast with an actionable message.
 func (te *TestEnvironment) newTestClient() (unifi.Client, error) {
-	const user = "admin"
-	const password = "admin"
-	var err error
-	if err = os.Setenv("UNIFI_USERNAME", user); err != nil {
+	apiKey := os.Getenv("UNIFI_ACCTEST_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("UNIFI_API_KEY")
+	}
+	if apiKey == "" {
+		return nil, errors.New("acceptance tests require an API key: go-unifi v10 is API-key-only, so set UNIFI_ACCTEST_API_KEY (or UNIFI_API_KEY) to a key valid on the test controller (username/password auth was removed)")
+	}
+
+	// Legacy username/password now trigger a hard configuration error in the
+	// provider; make sure a stray env var from a previous run cannot leak in.
+	_ = os.Unsetenv("UNIFI_USERNAME")
+	_ = os.Unsetenv("UNIFI_PASSWORD")
+	if err := os.Setenv("UNIFI_API_KEY", apiKey); err != nil {
+		return nil, err
+	}
+	if err := os.Setenv("UNIFI_INSECURE", "true"); err != nil {
+		return nil, err
+	}
+	if err := os.Setenv("UNIFI_API", te.Endpoint); err != nil {
 		return nil, err
 	}
 
-	if err = os.Setenv("UNIFI_PASSWORD", password); err != nil {
-		return nil, err
-	}
-
-	if err = os.Setenv("UNIFI_INSECURE", "true"); err != nil {
-		return nil, err
-	}
-
-	if err = os.Setenv("UNIFI_API", te.Endpoint); err != nil {
-		return nil, err
-	}
-
-	client, err := unifi.NewClient(&unifi.ClientConfig{
+	return unifi.NewClient(&unifi.ClientConfig{
 		URL:            te.Endpoint,
-		User:           user,
-		Password:       password,
-		VerifySSL:      false,
-		RememberMe:     true,
+		APIKey:         apiKey,
+		SkipVerifySSL:  true,
 		ValidationMode: unifi.DisableValidation,
 		Logger:         unifi.NewDefaultLogger(unifi.WarnLevel),
 	})
-	return base.NewRetryableUnifiClient(client), err
 }
