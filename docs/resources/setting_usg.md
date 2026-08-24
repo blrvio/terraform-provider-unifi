@@ -177,7 +177,7 @@ When set to `manual`, you should specify values for the various timeout settings
 
 ### Read-Only
 
-- `geo_ip_filtering_enabled` (Boolean) Whether Geo IP Filtering is enabled. When enabled, the gateway will apply the specified country-based
+- `geo_ip_filtering_enabled` (Boolean, Deprecated) Whether Geo IP Filtering is enabled. Deprecated and always `false` on this resource — Region Blocking is managed by the `unifi_setting_usg_geo` resource on UDM-Pro / UniFi Network 10.x.
 - `id` (String) The unique identifier of this resource.
 - `upnp_enabled` (Boolean) Whether UPNP is enabled. When enabled, the gateway will automatically forward ports for UPNP-compatible devices
 

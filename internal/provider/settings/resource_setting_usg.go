@@ -235,25 +235,13 @@ func (d *usgModel) AsUnifiModel(ctx context.Context) (interface{}, diag.Diagnost
 	}
 	// TODO end of deprecated
 
-	// Assign Geo IP filtering attributes
-	if ut.IsDefined(d.GeoIPFiltering) {
-		var geoIPFiltering *GeoIPFilteringModel
-		diags.Append(d.GeoIPFiltering.As(ctx, &geoIPFiltering, basetypes.ObjectAsOptions{})...)
-		if diags.HasError() {
-			return nil, diags
-		}
-
-		model.GeoIPFilteringBlock = geoIPFiltering.Mode.ValueString()
-		model.GeoIPFilteringTrafficDirection = geoIPFiltering.TrafficDirection.ValueString()
-		countries, diags := ut.ListElementsToString(ctx, geoIPFiltering.Countries)
-		if diags.HasError() {
-			return nil, diags
-		}
-		model.GeoIPFilteringEnabled = true
-		model.GeoIPFilteringCountries = countries
-	} else {
-		model.GeoIPFilteringEnabled = false
-	}
+	// Geo IP filtering (Region Blocking) is DEPRECATED on this resource. On the
+	// primary target (UDM-Pro / UniFi Network 10.x) it lives in the separate
+	// `usg_geo` setting (use the unifi_setting_usg_geo resource); the flat fields
+	// here map to an old spec that the controller does not persist, which produced
+	// "inconsistent result after apply". We therefore NEVER write geo from this
+	// resource — the block is a no-op kept only for backward compatibility.
+	model.GeoIPFilteringEnabled = false
 
 	// Assign UPNP attributes
 	if ut.IsDefined(d.Upnp) {
@@ -360,28 +348,13 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	d.ID = types.StringValue(model.ID)
 	d.MulticastDNSEnabled = types.BoolValue(model.MdnsEnabled)
 
-	// Set Geo IP filtering attributes
-	d.GeoIPFilteringEnabled = types.BoolValue(model.GeoIPFilteringEnabled)
-	if model.GeoIPFilteringEnabled {
-		geoIPFiltering := &GeoIPFilteringModel{
-			Mode:             types.StringValue(model.GeoIPFilteringBlock),
-			TrafficDirection: types.StringValue(model.GeoIPFilteringTrafficDirection),
-		}
-
-		countries, diags := ut.StringToListElements(ctx, model.GeoIPFilteringCountries)
-		if diags.HasError() {
-			return diags
-		}
-		geoIPFiltering.Countries = countries
-
-		geoIPObject, diags := types.ObjectValueFrom(ctx, geoIPFiltering.AttributeTypes(), geoIPFiltering)
-		if diags.HasError() {
-			return diags
-		}
-		d.GeoIPFiltering = geoIPObject
-	} else {
-		d.GeoIPFiltering = types.ObjectNull((&GeoIPFilteringModel{}).AttributeTypes())
-	}
+	// Geo IP filtering is deprecated and a no-op here (see AsUnifiModel): the
+	// controller does not persist these flat fields, so reading them back would
+	// flip the state and reintroduce "inconsistent result after apply". Keep
+	// `geo_ip_filtering` as-is (the configured value survives via UseStateForUnknown)
+	// and report the enabled flag as false. Region Blocking is managed by the
+	// unifi_setting_usg_geo resource on UDM-Pro / Network 10.x.
+	d.GeoIPFilteringEnabled = types.BoolValue(false)
 
 	d.UpnpEnabled = types.BoolValue(model.UpnpEnabled)
 	// Set UPNP attributes
@@ -609,8 +582,14 @@ func (r *usgResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				},
 			},
 			"geo_ip_filtering_enabled": schema.BoolAttribute{
-				MarkdownDescription: "Whether Geo IP Filtering is enabled. When enabled, the gateway will apply the specified country-based ",
-				Computed:            true,
+				MarkdownDescription: "Whether Geo IP Filtering is enabled. Deprecated and always `false` on this resource — Region Blocking is " +
+					"managed by the `unifi_setting_usg_geo` resource on UDM-Pro / UniFi Network 10.x.",
+				DeprecationMessage: "Region Blocking is not managed by unifi_setting_usg on UDM-Pro / Network 10.x. Use the " +
+					"unifi_setting_usg_geo resource; this attribute is always false here.",
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"geo_ip_filtering": schema.SingleNestedAttribute{
 				MarkdownDescription: "Geographic IP filtering configuration that allows blocking or allowing traffic based on country of origin. " +
@@ -672,6 +651,9 @@ func (r *usgResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 			"upnp_enabled": schema.BoolAttribute{
 				MarkdownDescription: "Whether UPNP is enabled. When enabled, the gateway will automatically forward ports for UPNP-compatible devices ",
 				Computed:            true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"upnp": schema.SingleNestedAttribute{
 				MarkdownDescription: "UPNP (Universal Plug and Play) configuration settings. UPNP allows compatible applications and devices to automatically " +
