@@ -764,7 +764,7 @@ func ResourceNetwork() *schema.Resource {
 				Type:         schema.TypeInt,
 				Optional:     true,
 				Computed:     true,
-				ValidateFunc: validation.IsPortNumber,
+				ValidateFunc: validateWireguardPeerPortOpt,
 			},
 			"vpn_binding_mode": {
 				Description: "How the WireGuard VPN server binds to its egress interface (e.g. `interface`). " +
@@ -1114,22 +1114,49 @@ func customizeNetworkVPNClient(_ context.Context, d *schema.ResourceDiff, _ inte
 		return nil // no config (e.g. on destroy) — nothing to validate
 	}
 
-	// Every field that only belongs on a vpn-client network.
-	vpnFields := []string{
-		"vpn_type", "wireguard_interface", "wireguard_client_mode",
+	// Fields that only belong on a vpn-client network (WireGuard client peer).
+	clientOnlyFields := []string{
+		"wireguard_interface", "wireguard_client_mode",
 		"wireguard_client_peer_ip", "wireguard_client_peer_public_key",
 		"x_wireguard_private_key", "wireguard_client_preshared_key",
 		"wireguard_client_peer_port", "uid_vpn_custom_routing",
 	}
+	// Fields that only belong on a remote-user-vpn network (WireGuard server).
+	serverOnlyFields := []string{
+		"local_port", "vpn_binding_mode", "mss_clamp",
+		"wireguard_interface_binding_mode_ip_version",
+	}
 
 	purpose, _ := d.Get("purpose").(string)
-	if purpose != "vpn-client" {
-		for _, k := range vpnFields {
+
+	// A WireGuard VPN server (purpose = remote-user-vpn) shares vpn_type but has its
+	// own field set; reject only the client-specific fields here.
+	if purpose == "remote-user-vpn" {
+		for _, k := range clientOnlyFields {
 			if utils.IsRawConfigSet(raw, k) {
 				return fmt.Errorf("%q is only valid when purpose = %q", k, "vpn-client")
 			}
 		}
+		if vpnType, _ := d.Get("vpn_type").(string); vpnType != "" && vpnType != "wireguard-server" {
+			return fmt.Errorf("%q must be %q when purpose = %q", "vpn_type", "wireguard-server", "remote-user-vpn")
+		}
 		return nil
+	}
+
+	if purpose != "vpn-client" {
+		for _, k := range append(append([]string{"vpn_type"}, clientOnlyFields...), serverOnlyFields...) {
+			if utils.IsRawConfigSet(raw, k) {
+				return fmt.Errorf("%q is only valid when purpose = %q or %q", k, "vpn-client", "remote-user-vpn")
+			}
+		}
+		return nil
+	}
+
+	// purpose == "vpn-client": server-only fields are not valid here.
+	for _, k := range serverOnlyFields {
+		if utils.IsRawConfigSet(raw, k) {
+			return fmt.Errorf("%q is only valid when purpose = %q", k, "remote-user-vpn")
+		}
 	}
 
 	vpnType, _ := d.Get("vpn_type").(string)
