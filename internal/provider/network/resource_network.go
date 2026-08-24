@@ -909,7 +909,7 @@ func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta int
 		}
 	}
 
-	req, err := resourceNetworkGetResourceData(d)
+	req, err := resourceNetworkGetResourceData(d, nil)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -929,7 +929,7 @@ func resourceNetworkCreate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceNetworkSetResourceData(resp, d, site)
 }
 
-func resourceNetworkGetResourceData(d *schema.ResourceData) (*unifi.Network, error) {
+func resourceNetworkGetResourceData(d *schema.ResourceData, current *unifi.Network) (*unifi.Network, error) {
 	vlan, _ := d.Get("vlan_id").(int)
 	dhcpDNSRaw, _ := d.Get("dhcp_dns").([]interface{})
 	dhcpDNS, err := utils.ListToStringSlice(dhcpDNSRaw)
@@ -973,40 +973,50 @@ func resourceNetworkGetResourceData(d *schema.ResourceData) (*unifi.Network, err
 		ipSubnet = utils.CidrZeroBased(subnet)
 	}
 
-	n := &unifi.Network{
-		VLAN:     vlan,
-		IPSubnet: ipSubnet,
-
-		// Trusted DHCP servers for DHCP Guarding. Same hackish positional fan-out as
-		// DHCPDDNS{x}; an empty list maps to "" entries. ¯\_(ツ)_/¯
-		DHCPDIP1: append(dhcpGuardServers, "")[0],
-		DHCPDIP2: append(dhcpGuardServers, "", "")[1],
-		DHCPDIP3: append(dhcpGuardServers, "", "", "")[2],
-
-		DHCPDDNSEnabled: len(dhcpDNS) > 0,
-		// this is kinda hacky but ¯\_(ツ)_/¯
-		DHCPDDNS1: append(dhcpDNS, "")[0],
-		DHCPDDNS2: append(dhcpDNS, "", "")[1],
-		DHCPDDNS3: append(dhcpDNS, "", "", "")[2],
-		DHCPDDNS4: append(dhcpDNS, "", "", "", "")[3],
-
-		VLANEnabled: vlan != 0 && vlan != 1,
-
-		// Same hackish code as for DHCPv4 ¯\_(ツ)_/¯
-		DHCPDV6DNS1: append(dhcpV6DNS, "")[0],
-		DHCPDV6DNS2: append(dhcpV6DNS, "", "")[1],
-		DHCPDV6DNS3: append(dhcpV6DNS, "", "", "")[2],
-		DHCPDV6DNS4: append(dhcpV6DNS, "", "", "", "")[3],
-
-		// this is kinda hacky but ¯\_(ツ)_/¯
-		WANDNS1: append(wanDNS, "")[0],
-		WANDNS2: append(wanDNS, "", "")[1],
-		WANDNS3: append(wanDNS, "", "", "")[2],
-		WANDNS4: append(wanDNS, "", "", "", "")[3],
-
-		VPNType:             vpnType,
-		UidVPNCustomRouting: uidVPNCustomRouting,
+	n := &unifi.Network{}
+	if current != nil {
+		// Read-modify-write: start from the current controller object so the
+		// full-replace networkconf PUT preserves every field the provider does not
+		// model. The go-unifi Network has ~85 non-omitempty fields the schema never
+		// touches (e.g. wan_pppoe_password_enabled, dhcpd_dns_enabled, igmp_*); a
+		// fresh struct would send them all as their zero value and clobber the live
+		// config — famously disabling PPPoE auth on a WAN rename. The assignments
+		// below overlay only the fields the provider manages.
+		*n = *current
 	}
+
+	n.VLAN = vlan
+	n.IPSubnet = ipSubnet
+
+	// Trusted DHCP servers for DHCP Guarding. Same hackish positional fan-out as
+	// DHCPDDNS{x}; an empty list maps to "" entries. ¯\_(ツ)_/¯
+	n.DHCPDIP1 = append(dhcpGuardServers, "")[0]
+	n.DHCPDIP2 = append(dhcpGuardServers, "", "")[1]
+	n.DHCPDIP3 = append(dhcpGuardServers, "", "", "")[2]
+
+	n.DHCPDDNSEnabled = len(dhcpDNS) > 0
+	// this is kinda hacky but ¯\_(ツ)_/¯
+	n.DHCPDDNS1 = append(dhcpDNS, "")[0]
+	n.DHCPDDNS2 = append(dhcpDNS, "", "")[1]
+	n.DHCPDDNS3 = append(dhcpDNS, "", "", "")[2]
+	n.DHCPDDNS4 = append(dhcpDNS, "", "", "", "")[3]
+
+	n.VLANEnabled = vlan != 0 && vlan != 1
+
+	// Same hackish code as for DHCPv4 ¯\_(ツ)_/¯
+	n.DHCPDV6DNS1 = append(dhcpV6DNS, "")[0]
+	n.DHCPDV6DNS2 = append(dhcpV6DNS, "", "")[1]
+	n.DHCPDV6DNS3 = append(dhcpV6DNS, "", "", "")[2]
+	n.DHCPDV6DNS4 = append(dhcpV6DNS, "", "", "", "")[3]
+
+	// this is kinda hacky but ¯\_(ツ)_/¯
+	n.WANDNS1 = append(wanDNS, "")[0]
+	n.WANDNS2 = append(wanDNS, "", "")[1]
+	n.WANDNS3 = append(wanDNS, "", "", "")[2]
+	n.WANDNS4 = append(wanDNS, "", "", "", "")[3]
+
+	n.VPNType = vpnType
+	n.UidVPNCustomRouting = uidVPNCustomRouting
 
 	n.Name, _ = d.Get("name").(string)
 	n.Purpose, _ = d.Get("purpose").(string)
@@ -1549,16 +1559,30 @@ func resourceNetworkUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		return diag.Errorf("unexpected meta type: %T", meta)
 	}
 
-	req, err := resourceNetworkGetResourceData(d)
+	site, _ := d.Get("site").(string)
+	if site == "" {
+		site = c.Site
+	}
+
+	// Read-modify-write: fetch the live object first so the full-replace PUT keeps
+	// the ~85 networkconf fields the provider does not model (see getResourceData).
+	current, err := c.GetNetwork(ctx, site, d.Id())
+	if errors.Is(err, unifi.ErrNotFound) {
+		// Deleted out-of-band; clear state so it is recreated on the next apply
+		// (mirrors the post-update not-found handling below).
+		d.SetId("")
+		return nil
+	}
+	if err != nil {
+		return diag.FromErr(fmt.Errorf("reading current network before update: %w", err))
+	}
+
+	req, err := resourceNetworkGetResourceData(d, current)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
 	req.ID = d.Id()
-	site, _ := d.Get("site").(string)
-	if site == "" {
-		site = c.Site
-	}
 	req.SiteID = site
 
 	// go-unifi v1.9.3's updateNetwork converts a successful-but-empty PUT response

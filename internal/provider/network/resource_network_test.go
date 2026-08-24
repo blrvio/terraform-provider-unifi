@@ -22,12 +22,52 @@ func TestResourceNetworkGetResourceData_dhcpGuarding(t *testing.T) {
 
 	d := schema.TestResourceDataRaw(t, ResourceNetwork().Schema, raw)
 
-	req, err := resourceNetworkGetResourceData(d)
+	req, err := resourceNetworkGetResourceData(d, nil)
 	if err != nil {
 		t.Fatalf("resourceNetworkGetResourceData returned error: %s", err)
 	}
 	if !req.DHCPguardEnabled {
 		t.Fatalf("expected DHCPguardEnabled to be true, got false")
+	}
+}
+
+// TestResourceNetworkGetResourceData_preservesUnmodeledOnUpdate is the regression
+// guard for the WAN-rename outage: the update PUT is a full replace, so fields the
+// provider does not model (here wan_pppoe_password_enabled / wan_pppoe_username_enabled,
+// which lack omitempty) must be carried over from the current controller object
+// rather than sent as their zero value — otherwise a one-field change like a rename
+// disables PPPoE auth and drops the WAN.
+func TestResourceNetworkGetResourceData_preservesUnmodeledOnUpdate(t *testing.T) {
+	current := &unifi.Network{
+		ID:                      "wan1",
+		Name:                    "Internet 1",
+		Purpose:                 "wan",
+		WANType:                 "pppoe",
+		WANPppoePasswordEnabled: true,
+		WANPppoeUsernameEnabled: true,
+		ReportWANEvent:          true, // another unmodeled non-omitempty field
+	}
+
+	// Config only renames the network (the exact operation that caused the outage).
+	raw := map[string]interface{}{
+		"name":    "Internet Principal",
+		"purpose": "wan",
+	}
+	d := schema.TestResourceDataRaw(t, ResourceNetwork().Schema, raw)
+
+	req, err := resourceNetworkGetResourceData(d, current)
+	if err != nil {
+		t.Fatalf("resourceNetworkGetResourceData returned error: %s", err)
+	}
+	if req.Name != "Internet Principal" {
+		t.Fatalf("expected name to be overlaid to %q, got %q", "Internet Principal", req.Name)
+	}
+	if !req.WANPppoePasswordEnabled || !req.WANPppoeUsernameEnabled {
+		t.Fatalf("unmodeled PPPoE enable flags were not preserved: password=%v username=%v",
+			req.WANPppoePasswordEnabled, req.WANPppoeUsernameEnabled)
+	}
+	if !req.ReportWANEvent {
+		t.Fatalf("unmodeled field report_wan_event was reset to zero")
 	}
 }
 
@@ -42,7 +82,7 @@ func TestResourceNetworkGetResourceData_dhcpGuardingExplicitFalse(t *testing.T) 
 
 	d := schema.TestResourceDataRaw(t, ResourceNetwork().Schema, raw)
 
-	req, err := resourceNetworkGetResourceData(d)
+	req, err := resourceNetworkGetResourceData(d, nil)
 	if err != nil {
 		t.Fatalf("resourceNetworkGetResourceData returned error: %s", err)
 	}
@@ -293,7 +333,7 @@ func TestResourceNetworkGetResourceData_defaultGateway(t *testing.T) {
 
 	d := schema.TestResourceDataRaw(t, ResourceNetwork().Schema, raw)
 
-	req, err := resourceNetworkGetResourceData(d)
+	req, err := resourceNetworkGetResourceData(d, nil)
 	if err != nil {
 		t.Fatalf("resourceNetworkGetResourceData returned error: %s", err)
 	}
