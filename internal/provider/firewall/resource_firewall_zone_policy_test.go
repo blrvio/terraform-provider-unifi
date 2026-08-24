@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/blrvio/go-unifi/v10/unifi"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/stretchr/testify/assert"
@@ -31,6 +32,27 @@ func TestFirewallZonePolicyIndexReadOnly(t *testing.T) {
 	assert.False(t, indexAttr.Optional, "`index` must not be Optional (it is controller-assigned)")
 	assert.False(t, indexAttr.Required, "`index` must not be Required")
 	assert.Nil(t, indexAttr.Default, "`index` must not declare a Default; a default suppresses unknown-marking on update and reintroduces issue #122")
+}
+
+// TestFirewallZonePolicyMergeConnectionStatesCustom is a controller-free
+// regression lock for the "inconsistent result after apply" on
+// connection_states. The controller returns connection_state_type in UPPERCASE
+// ("CUSTOM"), but Merge previously gated the connection_states copy-back on the
+// lowercase literal "custom", so a CUSTOM policy's states were nulled on read —
+// the planned ["NEW"] never matched the applied null and the plan never
+// converged. Merge must repopulate connection_states whenever the type is CUSTOM
+// (case-insensitively).
+func TestFirewallZonePolicyMergeConnectionStatesCustom(t *testing.T) {
+	m := &FirewallZonePolicyModel{}
+	diags := m.Merge(context.Background(), &unifi.FirewallZonePolicy{
+		ConnectionStateType: "CUSTOM",
+		ConnectionStates:    []string{"NEW"},
+	})
+	require.False(t, diags.HasError(), "Merge returned diagnostics: %v", diags)
+
+	require.False(t, m.ConnectionStates.IsNull(), "connection_states must be populated when connection_state_type is CUSTOM")
+	require.Len(t, m.ConnectionStates.Elements(), 1, "expected exactly one connection state")
+	assert.Equal(t, `"NEW"`, m.ConnectionStates.Elements()[0].String())
 }
 
 func TestNewFirewallPolicyTargetModelPortParsing(t *testing.T) {

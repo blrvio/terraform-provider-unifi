@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"strconv"
+	"strings"
 
 	"github.com/blrvio/go-unifi/v10/unifi"
 	"github.com/blrvio/go-unifi/v10/unifi/features"
@@ -592,8 +593,10 @@ func (m *FirewallZonePolicyModel) Merge(ctx context.Context, other interface{}) 
 	diags.Append(m.mergeDestination(ctx, model)...)
 	diags.Append(m.mergeSchedule(ctx, model)...)
 
-	// Set ConnectionStates
-	if model.ConnectionStateType == "custom" {
+	// Set ConnectionStates. The controller returns the type in uppercase
+	// ("CUSTOM"); compare case-insensitively so the states are copied back and
+	// the plan converges (avoids "inconsistent result after apply").
+	if strings.EqualFold(model.ConnectionStateType, "CUSTOM") {
 		connectionStates, d := types.ListValueFrom(ctx, types.StringType, model.ConnectionStates)
 		diags.Append(d...)
 		m.ConnectionStates = connectionStates

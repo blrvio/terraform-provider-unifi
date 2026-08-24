@@ -51,6 +51,46 @@ func TestAccFirewallZonePolicy_basic(t *testing.T) {
 	})
 }
 
+// TestAccFirewallZonePolicy_connectionStatesConverge locks the fix for the
+// "inconsistent result after apply" on connection_states. A CUSTOM policy with
+// connection_states=["NEW"] must round-trip: after the first apply, a second
+// PlanOnly step must produce an EMPTY plan (previously connection_states was
+// nulled on read because Merge compared the type against lowercase "custom",
+// so the plan never converged). Also covers a port_group_id destination, the
+// shape used to block the console.
+func TestAccFirewallZonePolicy_connectionStatesConverge(t *testing.T) {
+	pt.SkipIfEnvLocalMissing(t, "Skipping, because test environment does not support firewall zones yet")
+	name := acctest.RandomWithPrefix("tfacc-zone-policy")
+	subnet, vlanID := pt.GetTestVLAN(t)
+
+	config := pt.ComposeConfig(
+		testAccFirewallZonePolicyPreConfig(name, subnet.String(), vlanID),
+		testAccFirewallZonePolicyConnectionStatesConfig(name),
+	)
+
+	AcceptanceTest(t, AcceptanceTestCase{
+		VersionConstraint: ">= 9.0.0",
+		Lock:              firewallZonePolicyLock,
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(testFirewallZonePolicyResourceName, "connection_state_type", "CUSTOM"),
+					resource.TestCheckResourceAttr(testFirewallZonePolicyResourceName, "connection_states.#", "1"),
+					resource.TestCheckResourceAttr(testFirewallZonePolicyResourceName, "connection_states.0", "NEW"),
+				),
+			},
+			{
+				// Second apply with no config change must be a no-op.
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+		CheckDestroy: testAccCheckFirewallZonePolicyDestroy,
+	})
+}
+
 // TestAccFirewallZonePolicy_update tests updating a firewall zone policy.
 func TestAccFirewallZonePolicy_update(t *testing.T) {
 	pt.SkipIfEnvLocalMissing(t, "Skipping, because test environment does not support firewall zones yet")
@@ -718,6 +758,36 @@ resource "unifi_firewall_zone_policy" "test" {
 	
 	destination = {
 		zone_id = unifi_firewall_zone.test.id
+	}
+}
+`, name)
+}
+
+// testAccFirewallZonePolicyConnectionStatesConfig declares a CUSTOM-state policy
+// (connection_states=["NEW"]) with a port_group_id destination — the shape used
+// to block console access. Used to assert the plan converges after apply.
+func testAccFirewallZonePolicyConnectionStatesConfig(name string) string {
+	return fmt.Sprintf(`
+resource "unifi_firewall_group" "test" {
+	name  = %[1]q
+	type  = "port-group"
+	members = ["443", "8443"]
+}
+
+resource "unifi_firewall_zone_policy" "test" {
+	name   = %[1]q
+	action = "BLOCK"
+
+	connection_state_type = "CUSTOM"
+	connection_states     = ["NEW"]
+
+	source = {
+		zone_id = unifi_firewall_zone.test.id
+	}
+
+	destination = {
+		zone_id       = unifi_firewall_zone.test.id
+		port_group_id = unifi_firewall_group.test.id
 	}
 }
 `, name)
