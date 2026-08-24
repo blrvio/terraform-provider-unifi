@@ -72,12 +72,7 @@ Use 'auto' for highest security, 'mac_based' for legacy devices, and 'multi_host
   * `customize` - Forward selected VLANs (use with `excluded_network_ids`)
   * `disabled` - Disable VLAN forwarding
 
-Examples:
-  * Use 'all' for uplink ports or connections to VLAN-aware devices
-  * Use 'native' for end-user devices or simple network connections
-  * Use 'customize' to create a selective trunk port (e.g., for a server needing access to specific VLANs)
-
-~> **Note:** For an access port configured only with `native_networkconf_id` the controller normalizes the stored mode to `customize`. With the default value of `native` this currently results in a non-failing perpetual diff (`~ forward = "customize" -> "native"`) on every plan. To avoid it, set `forward = "customize"` explicitly. See issue #98. Defaults to `native`.
+~> **Note:** On modern controllers (UniFi Network 10.x) the gateway **derives** this mode from the port profile's network membership and ignores a client-supplied value: a profile whose `native_networkconf_id` is the default LAN reads back as `all`, while a VLAN native network reads back as `customize`. This attribute is therefore `Computed` — omit it and let the controller populate the derived mode (the plan then converges without `ignore_changes`). Express the desired mode through `native_networkconf_id` / `tagged_networkconf_ids` / `excluded_networkconf_ids` instead. Setting it explicitly is honored only on older controllers that accept the field. See issue #98.
 - `full_duplex` (Boolean) Enable full-duplex mode when auto-negotiation is disabled. Full duplex allows simultaneous two-way communication. Defaults to `false`.
 - `isolation` (Boolean) Enable port isolation. When enabled, devices connected to ports with this profile cannot communicate with each other, providing enhanced security. Defaults to `false`.
 - `lldpmed_enabled` (Boolean) Enable Link Layer Discovery Protocol-Media Endpoint Discovery (LLDP-MED). This allows for automatic discovery and configuration of devices like VoIP phones. Defaults to `true`.

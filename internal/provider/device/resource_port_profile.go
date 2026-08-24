@@ -96,17 +96,17 @@ func ResourcePortProfile() *schema.Resource {
 					"  * `native` - Only forward untagged traffic (access port)\n" +
 					"  * `customize` - Forward selected VLANs (use with `excluded_network_ids`)\n" +
 					"  * `disabled` - Disable VLAN forwarding\n\n" +
-					"Examples:\n" +
-					"  * Use 'all' for uplink ports or connections to VLAN-aware devices\n" +
-					"  * Use 'native' for end-user devices or simple network connections\n" +
-					"  * Use 'customize' to create a selective trunk port (e.g., for a server needing access to specific VLANs)\n\n" +
-					"~> **Note:** For an access port configured only with `native_networkconf_id` the controller " +
-					"normalizes the stored mode to `customize`. With the default value of `native` this currently " +
-					"results in a non-failing perpetual diff (`~ forward = \"customize\" -> \"native\"`) on every plan. " +
-					"To avoid it, set `forward = \"customize\"` explicitly. See issue #98.",
+					"~> **Note:** On modern controllers (UniFi Network 10.x) the gateway **derives** this mode " +
+					"from the port profile's network membership and ignores a client-supplied value: a profile whose " +
+					"`native_networkconf_id` is the default LAN reads back as `all`, while a VLAN native network reads " +
+					"back as `customize`. This attribute is therefore `Computed` — omit it and let the controller " +
+					"populate the derived mode (the plan then converges without `ignore_changes`). Express the desired " +
+					"mode through `native_networkconf_id` / `tagged_networkconf_ids` / `excluded_networkconf_ids` " +
+					"instead. Setting it explicitly is honored only on older controllers that accept the field. " +
+					"See issue #98.",
 				Type:         schema.TypeString,
 				Optional:     true,
-				Default:      "native",
+				Computed:     true,
 				ValidateFunc: validation.StringInSlice([]string{"all", "native", "customize", "disabled"}, false),
 			},
 			"full_duplex": {

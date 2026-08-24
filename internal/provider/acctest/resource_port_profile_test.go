@@ -61,6 +61,32 @@ func TestAccPortProfile_update(t *testing.T) {
 	})
 }
 
+// TestAccPortProfile_forwardConverges locks the fix for the perpetual
+// `~ forward = "customize" -> "native"` diff (issue #98). `forward` is now
+// Optional+Computed with no default, so a config that omits it adopts the
+// controller-derived mode and a second apply must be an EMPTY plan — no
+// ignore_changes required.
+func TestAccPortProfile_forwardConverges(t *testing.T) {
+	name := acctest.RandomWithPrefix("tfacc")
+	config := testAccPortProfileConfig(name)
+	AcceptanceTest(t, AcceptanceTestCase{
+		VersionConstraint: "< 7.4",
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet("unifi_port_profile.test", "forward"),
+				),
+			},
+			{
+				Config:             config,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: false,
+			},
+		},
+	})
+}
+
 func testAccPortProfileConfig(name string) string {
 	return fmt.Sprintf(`
 resource "unifi_port_profile" "test" {
