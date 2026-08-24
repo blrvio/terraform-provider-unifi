@@ -267,95 +267,21 @@ func radioSet(items ...map[string]interface{}) *schema.Set {
 	return schema.NewSet(radioSetHash, raw)
 }
 
-func radioByBand(rs []unifi.DeviceRadioTable, band string) (unifi.DeviceRadioTable, bool) {
-	for _, r := range rs {
-		if r.Radio == band {
-			return r, true
-		}
-	}
-	return unifi.DeviceRadioTable{}, false
-}
-
-// The core safety property: declaring one band must not wipe the others.
-func TestMergeRadios_PreservesUndeclaredBands(t *testing.T) {
-	current := []unifi.DeviceRadioTable{
-		{Radio: "ng", Channel: "1", Ht: 20, TxPowerMode: "auto"},
-		{Radio: "na", Channel: "36", Ht: 80, TxPowerMode: "high"},
-		{Radio: "6e", Channel: "37", Ht: 160, TxPowerMode: "auto"},
-	}
-	got := mergeRadios(current, radioSet(map[string]interface{}{
-		"name": "ng", "tx_power_mode": "disabled",
-	}))
-	if len(got) != 3 {
-		t.Fatalf("expected all 3 bands preserved, got %d: %+v", len(got), got)
-	}
-	ng, _ := radioByBand(got, "ng")
-	if ng.TxPowerMode != "disabled" {
-		t.Errorf("ng tx_power_mode = %q, want disabled", ng.TxPowerMode)
-	}
-	if ng.Channel != "1" || ng.Ht != 20 {
-		t.Errorf("ng channel/ht clobbered: got channel=%q ht=%d, want 1/20", ng.Channel, ng.Ht)
-	}
-	if na, _ := radioByBand(got, "na"); na.Channel != "36" || na.Ht != 80 || na.TxPowerMode != "high" {
-		t.Errorf("na band modified: %+v", na)
-	}
-	if sixE, _ := radioByBand(got, "6e"); sixE.Channel != "37" || sixE.Ht != 160 {
-		t.Errorf("6e band modified: %+v", sixE)
-	}
-}
-
-// TestMergeRadios_Preserves5GCapabilityFields locks the fix for
-// `400 api.err.DeviceNotSupport5gException` on a UAP6MP. Changing only the 2.4GHz
-// (`ng`) radio must re-emit the 5GHz (`na`) radio with its capability fields
-// (nss, radio_caps, radio_caps2, has_ht160, max/min_txpower) intact — the
-// controller rejects a radio_table PUT that drops them. mergeRadios starts from
-// the device's current radio_table, so once the SDK models these fields they
-// survive the merge unchanged.
-func TestMergeRadios_Preserves5GCapabilityFields(t *testing.T) {
-	current := []unifi.DeviceRadioTable{
-		{Radio: "ng", Channel: "auto", Ht: 20, TxPowerMode: "auto"},
-		{
-			Radio: "na", Channel: "40", Ht: 80, TxPowerMode: "auto",
-			Nss: 4, RadioCaps: 251805700, RadioCaps2: 31,
-			HasHt160: true, HasDfs: true, HasFccdfs: true,
-			Is11Ac: true, Is11Ax: true, MaxTxpower: 26, MinTxpower: 6,
-		},
-	}
-	got := mergeRadios(current, radioSet(map[string]interface{}{
-		"name": "ng", "channel": "1", "min_rssi": -75, "min_rssi_enabled": true,
-	}))
-
-	na, ok := radioByBand(got, "na")
-	require.True(t, ok, "na band must be preserved")
-	assert.Equal(t, 4, na.Nss, "nss dropped")
-	assert.Equal(t, 251805700, na.RadioCaps, "radio_caps dropped")
-	assert.Equal(t, 31, na.RadioCaps2, "radio_caps2 dropped")
-	assert.True(t, na.HasHt160, "has_ht160 dropped")
-	assert.True(t, na.Is11Ax, "is_11ax dropped")
-	assert.Equal(t, 26, na.MaxTxpower, "max_txpower dropped")
-	assert.Equal(t, 6, na.MinTxpower, "min_txpower dropped")
-
-	ng, _ := radioByBand(got, "ng")
-	assert.Equal(t, "1", ng.Channel, "ng channel must be applied")
-}
-
-// TestMergeRadiosRaw_PreservesAllFields is the byte-level regression for
-// api.err.DeviceNotSupport5gException on a UAP6MP. It feeds a REAL 10.5.67
-// radio_table (including a field the typed struct does not model and zero-valued
-// fields it would drop), declares a change to the 2.4GHz radio only, and asserts
-// that (a) the 5GHz band is preserved field-for-field and (b) the declared
-// scalars are applied. This is the coverage the earlier typed-only unit test
-// lacked, which is why it missed the real PUT failure.
-func TestMergeRadiosRaw_PreservesAllFields(t *testing.T) {
-	// Real na (5GHz) radio + ng (2.4GHz), plus an unmodeled field to prove
-	// byte-preservation of things the provider does not know about.
+// TestMergeRadiosRaw_MatchesUIShape locks the fix for
+// `400 api.err.DeviceNotSupport5gException` on a UAP6MP. The controller accepts a
+// radio_table PUT only in the exact shape the UniFi UI sends (captured from a
+// working request): the read-only capability fields (nss, radio_caps, has_ht160,
+// ...) must be DROPPED and channel/ht must be JSON NUMBERS. Earlier attempts that
+// preserved every field, or sent channel/ht as strings, were rejected — this
+// asserts the shape that actually round-trips, including an undeclared band.
+func TestMergeRadiosRaw_MatchesUIShape(t *testing.T) {
 	current := []json.RawMessage{
-		json.RawMessage(`{"radio":"ng","channel":"auto","ht":20,"tx_power_mode":"auto","min_rssi_enabled":false,"current_antenna_gain":0,"nss":2,"radio_caps":123,"vendor_future_field":"keep-me"}`),
-		json.RawMessage(`{"radio":"na","channel":40,"ht":"80","nss":4,"radio_caps":251805700,"radio_caps2":31,"has_ht160":true,"max_txpower":26,"min_txpower":6,"min_rssi_enabled":false,"current_antenna_gain":0,"vendor_future_field":"keep-me-too"}`),
+		json.RawMessage(`{"radio":"ng","name":"wifi0","channel":"auto","ht":20,"tx_power_mode":"auto","antenna_id":-1,"antenna_gain":4,"vwire_enabled":true,"min_rssi_enabled":false,"nss":2,"radio_caps":123,"has_ht160":true}`),
+		json.RawMessage(`{"radio":"na","name":"wifi1","channel":40,"ht":"80","tx_power_mode":"auto","antenna_id":-1,"antenna_gain":6,"vwire_enabled":true,"min_rssi_enabled":false,"nss":4,"radio_caps":251805700,"has_ht160":true,"max_txpower":26}`),
 	}
-
 	merged, err := mergeRadiosRaw(current, radioSet(map[string]interface{}{
-		"name": "ng", "channel": "1", "min_rssi": -75, "min_rssi_enabled": true,
+		"name": "ng", "channel": "1", "ht": 20, "tx_power_mode": "auto",
+		"min_rssi": -75, "min_rssi_enabled": true,
 	}))
 	require.NoError(t, err)
 	require.Len(t, merged, 2)
@@ -371,67 +297,45 @@ func TestMergeRadiosRaw_PreservesAllFields(t *testing.T) {
 		byBand[b.Radio] = m
 	}
 
-	// (a) na band: every original field preserved byte-for-byte, nothing dropped.
-	na := byBand["na"]
-	for k, want := range map[string]string{
-		"nss": "4", "radio_caps": "251805700", "radio_caps2": "31", "has_ht160": "true",
-		"max_txpower": "26", "min_txpower": "6", "min_rssi_enabled": "false",
-		"current_antenna_gain": "0", "channel": "40", "ht": `"80"`,
-		"vendor_future_field": `"keep-me-too"`,
-	} {
-		got, ok := na[k]
-		require.Truef(t, ok, "na.%s must be preserved", k)
-		assert.Equalf(t, want, string(got), "na.%s must be byte-preserved", k)
-	}
-
-	// (b) ng band: declared scalars applied; unmodeled/other fields preserved.
+	// (a) declared ng band: capability dropped, editable kept, scalars as numbers.
 	ng := byBand["ng"]
-	assert.Equal(t, `"1"`, string(ng["channel"]), "ng.channel must be applied")
-	assert.Equal(t, "-75", string(ng["min_rssi"]), "ng.min_rssi must be applied")
-	assert.Equal(t, "true", string(ng["min_rssi_enabled"]), "ng.min_rssi_enabled must be applied")
-	assert.Equal(t, `"keep-me"`, string(ng["vendor_future_field"]), "ng unmodeled field must be preserved")
-	assert.Equal(t, "123", string(ng["radio_caps"]), "ng.radio_caps must be preserved")
+	for _, k := range []string{"nss", "radio_caps", "has_ht160"} {
+		_, ok := ng[k]
+		assert.Falsef(t, ok, "ng.%s (read-only capability) must be dropped", k)
+	}
+	for _, k := range []string{"name", "antenna_id", "antenna_gain", "vwire_enabled"} {
+		_, ok := ng[k]
+		assert.Truef(t, ok, "ng.%s must be kept (the UI sends it)", k)
+	}
+	assert.Equal(t, "1", string(ng["channel"]), "ng.channel must be JSON number 1")
+	assert.Equal(t, "20", string(ng["ht"]), "ng.ht must be JSON number 20")
+	assert.Equal(t, "-75", string(ng["min_rssi"]))
+	assert.Equal(t, "true", string(ng["min_rssi_enabled"]))
+
+	// (b) undeclared na band: preserved editable fields, capability dropped.
+	na := byBand["na"]
+	assert.Equal(t, "40", string(na["channel"]), "na.channel preserved as number")
+	assert.Equal(t, `"80"`, string(na["ht"]), "na.ht preserved")
+	_, hasNss := na["nss"]
+	assert.False(t, hasNss, "na capability fields must be dropped")
 }
 
-// Only non-zero declared fields overlay; unset fields keep the controller value.
-func TestMergeRadios_OverlaysOnlyNonZero(t *testing.T) {
-	current := []unifi.DeviceRadioTable{{Radio: "ng", Channel: "6", Ht: 40, TxPowerMode: "medium"}}
-	got := mergeRadios(current, radioSet(map[string]interface{}{
-		"name": "ng", "channel": "11",
+// min_rssi is sent only when enabled; disabling drops the value.
+func TestMergeRadiosRaw_MinRssiPairing(t *testing.T) {
+	current := []json.RawMessage{json.RawMessage(`{"radio":"na","channel":36,"min_rssi":-80,"min_rssi_enabled":true}`)}
+	merged, err := mergeRadiosRaw(current, radioSet(map[string]interface{}{
+		"name": "na", "min_rssi_enabled": false,
 	}))
-	ng, _ := radioByBand(got, "ng")
-	if ng.Channel != "11" {
-		t.Errorf("channel = %q, want 11", ng.Channel)
+	require.NoError(t, err)
+	byBand := map[string]map[string]json.RawMessage{}
+	for _, raw := range merged {
+		var m map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(raw, &m))
+		byBand["na"] = m
 	}
-	if ng.Ht != 40 || ng.TxPowerMode != "medium" {
-		t.Errorf("unset fields clobbered: ht=%d tx_power_mode=%q, want 40/medium", ng.Ht, ng.TxPowerMode)
-	}
-}
-
-// A declared band missing from the device is appended.
-func TestMergeRadios_AppendsMissingBand(t *testing.T) {
-	current := []unifi.DeviceRadioTable{{Radio: "na", Channel: "36"}}
-	got := mergeRadios(current, radioSet(map[string]interface{}{
-		"name": "ng", "tx_power_mode": "disabled",
-	}))
-	if len(got) != 2 {
-		t.Fatalf("expected 2 bands, got %d", len(got))
-	}
-	if ng, ok := radioByBand(got, "ng"); !ok || ng.TxPowerMode != "disabled" {
-		t.Errorf("ng not appended correctly: %+v ok=%v", ng, ok)
-	}
-}
-
-// min_rssi pairs with min_rssi_enabled only when a non-zero threshold is set.
-func TestMergeRadios_MinRssiPairing(t *testing.T) {
-	current := []unifi.DeviceRadioTable{{Radio: "na"}}
-	got := mergeRadios(current, radioSet(map[string]interface{}{
-		"name": "na", "min_rssi": -75, "min_rssi_enabled": true,
-	}))
-	na, _ := radioByBand(got, "na")
-	if na.MinRssi != -75 || !na.MinRssiEnabled {
-		t.Errorf("min_rssi pairing failed: %+v", na)
-	}
+	assert.Equal(t, "false", string(byBand["na"]["min_rssi_enabled"]))
+	_, ok := byBand["na"]["min_rssi"]
+	assert.False(t, ok, "min_rssi must be dropped when disabled")
 }
 
 // Etherlighting overlay: declared fields apply; unset fields keep current values.

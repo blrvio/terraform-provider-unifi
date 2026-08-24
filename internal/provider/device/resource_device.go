@@ -509,12 +509,14 @@ func resourceDeviceUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 	radios, _ := d.Get("radio").(*schema.Set)
 	etherLighting, _ := d.Get("ether_lighting").([]interface{})
 
-	// Radio updates must go through a byte-preserving RAW round-trip: WiFi6+ APs
-	// (e.g. UAP6MP) reject a PUT that drops per-radio capability fields the
-	// controller echoed on the GET (api.err.DeviceNotSupport5gException). The
-	// typed Device struct is lossy (unmodeled fields + omitempty zero-values), so
-	// GET the full device as raw JSON, overlay the declared device-level fields
-	// and only the declared radio scalars, and PUT the raw object intact.
+	// Radio updates must reproduce the exact PUT the UniFi UI sends (captured from
+	// a working radio change on a UAP6MP): a curated set of device CONFIG fields
+	// plus a radio_table carrying only the editable per-radio fields, with
+	// channel/ht as JSON numbers (see uiDeviceConfigFields and mergeRadiosRaw).
+	// A full /stat blob, the typed struct's zero-value junk, resent read-only
+	// capability fields, or string-typed channel/ht all make WiFi6+ APs reject the
+	// PUT with api.err.DeviceNotSupport5gException. We GET the current device only
+	// to source those config values.
 	if radios.Len() > 0 {
 		base, err := c.GetDeviceRaw(ctx, site, d.Id())
 		if err != nil {
@@ -531,9 +533,18 @@ func resourceDeviceUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 			req.EtherLighting = mergeEtherLighting(current.EtherLighting, etherLightingMap)
 		}
 
-		// Overlay the user's declared device-level fields (from the typed req)
-		// onto the full raw device, then override radio_table with the raw merge
-		// so per-radio capability fields survive byte-for-byte.
+		// Mirror the exact PUT body the UniFi UI sends for a radio change (captured
+		// from a working request on a UAP6MP): a curated set of device CONFIG fields
+		// taken from the current device — NO runtime/stat fields, NO _id/mac/site_id/
+		// state/adopted — plus the editable radio_table. Sending a full stat blob OR
+		// the typed struct's zero-value junk (state:0, adopted:false, empty objects)
+		// both trip api.err.DeviceNotSupport5gException on WiFi6 APs.
+		putMap := unifi.DeviceRaw{}
+		for k, v := range base {
+			if uiDeviceConfigFields[k] {
+				putMap[k] = v
+			}
+		}
 		reqJSON, err := json.Marshal(req)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("encoding device update: %w", err))
@@ -542,8 +553,9 @@ func resourceDeviceUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		if err := json.Unmarshal(reqJSON, &reqMap); err != nil {
 			return diag.FromErr(fmt.Errorf("decoding device update: %w", err))
 		}
-		for k, v := range reqMap {
-			base[k] = v
+		// Overlay the provider-managed device-level fields the UI body also carries.
+		if v, ok := reqMap["name"]; ok {
+			putMap["name"] = v
 		}
 
 		var rawRadios []json.RawMessage
@@ -554,12 +566,12 @@ func resourceDeviceUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		if err != nil {
 			return diag.FromErr(err)
 		}
-		base["radio_table"], err = json.Marshal(mergedRadios)
+		putMap["radio_table"], err = json.Marshal(mergedRadios)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("encoding radio_table: %w", err))
 		}
 
-		rawResp, err := c.UpdateDeviceRaw(ctx, site, d.Id(), base)
+		rawResp, err := c.UpdateDeviceRaw(ctx, site, d.Id(), putMap)
 		if err != nil {
 			if errors.Is(err, unifi.ErrNotFound) {
 				d.SetId("")
@@ -793,58 +805,46 @@ func fromRadio(r unifi.DeviceRadioTable) map[string]interface{} {
 	}
 }
 
-// mergeRadios overlays the declared radio blocks onto the device's current
-// radio_table, preserving every band's existing settings and changing only the
-// non-zero fields the user specified. Bands not present in `current` are
-// appended. The full merged list is returned so the wholesale-replace PUT keeps
-// all bands intact.
-func mergeRadios(current []unifi.DeviceRadioTable, set *schema.Set) []unifi.DeviceRadioTable {
-	byBand := map[string]unifi.DeviceRadioTable{}
-	order := make([]string, 0, len(current))
-	for _, r := range current {
-		byBand[r.Radio] = r
-		order = append(order, r.Radio)
-	}
-	for _, item := range set.List() {
-		m, _ := item.(map[string]interface{})
-		band, _ := m["name"].(string)
-		r, ok := byBand[band]
-		if !ok {
-			r = unifi.DeviceRadioTable{Radio: band}
-			order = append(order, band)
-		}
-		if v, _ := m["channel"].(string); v != "" {
-			r.Channel = v
-		}
-		if v, _ := m["ht"].(int); v != 0 {
-			r.Ht = v
-		}
-		if v, _ := m["tx_power_mode"].(string); v != "" {
-			r.TxPowerMode = v
-		}
-		if v, _ := m["tx_power"].(string); v != "" {
-			r.TxPower = v
-		}
-		if v, _ := m["min_rssi"].(int); v != 0 {
-			r.MinRssi = v
-			r.MinRssiEnabled, _ = m["min_rssi_enabled"].(bool)
-		}
-		byBand[band] = r
-	}
-	out := make([]unifi.DeviceRadioTable, 0, len(order))
-	for _, b := range order {
-		out = append(out, byBand[b])
-	}
-	return out
+// editableRadioFields is the exact per-radio field set the UniFi UI PUTs on a
+// radio change (captured from a working request on a UAP6MP). Everything else the
+// /stat GET reports is read-only capability/state (nss, radio_caps, has_dfs,
+// max_txpower, is_11ax, current_antenna_gain, ...); echoing those back makes
+// WiFi6+ APs reject the PUT with api.err.DeviceNotSupport5gException.
+// uiDeviceConfigFields is the device-level (non radio_table) key set the UniFi UI
+// PUTs for a radio change, captured from a working request. Only these config
+// fields are echoed from the current device; runtime/stat fields and identity
+// (_id/mac/site_id/state/adopted) are omitted, matching the UI exactly.
+var uiDeviceConfigFields = map[string]bool{
+	"name":                          true,
+	"snmp_contact":                  true,
+	"snmp_location":                 true,
+	"mgmt_network_id":               true,
+	"afc_enabled":                   true,
+	"outdoor_mode_override":         true,
+	"outdoor_install_mode":          true,
+	"led_override":                  true,
+	"led_override_color":            true,
+	"led_override_color_brightness": true,
+	"powerSupervisor":               true,
+	"atf_enabled":                   true,
+	"config_network":                true,
+	"mesh_sta_vap_enabled":          true,
 }
 
-// mergeRadiosRaw is the byte-preserving counterpart of mergeRadios. It overlays
-// only the user-declared scalars (channel/ht/tx_power[_mode]/min_rssi[_enabled])
-// onto each band's RAW JSON object from the device GET, keeping every other field
-// — including per-radio capability fields the typed struct does not model or would
-// drop via omitempty (nss, radio_caps, has_ht160, current_antenna_gain, ...).
-// Sending the untouched fields back is what avoids
-// api.err.DeviceNotSupport5gException on WiFi6+ radios.
+var editableRadioFields = map[string]bool{
+	"radio":            true, // band key (ng/na/6e)
+	"name":             true, // interface name (wifi0/wifi1)
+	"channel":          true,
+	"ht":               true, // channel width
+	"tx_power_mode":    true,
+	"tx_power":         true,
+	"min_rssi":         true,
+	"min_rssi_enabled": true,
+	"antenna_id":       true, // UI keeps these three
+	"antenna_gain":     true,
+	"vwire_enabled":    true,
+}
+
 func mergeRadiosRaw(current []json.RawMessage, set *schema.Set) ([]json.RawMessage, error) {
 	byBand := map[string]map[string]json.RawMessage{}
 	order := make([]string, 0, len(current))
@@ -859,7 +859,13 @@ func mergeRadiosRaw(current []json.RawMessage, set *schema.Set) ([]json.RawMessa
 		if err := json.Unmarshal(raw, &b); err != nil {
 			return nil, fmt.Errorf("decoding radio band: %w", err)
 		}
-		byBand[b.Radio] = m
+		clean := map[string]json.RawMessage{}
+		for k, v := range m {
+			if editableRadioFields[k] {
+				clean[k] = v
+			}
+		}
+		byBand[b.Radio] = clean
 		order = append(order, b.Radio)
 	}
 
@@ -875,10 +881,17 @@ func mergeRadiosRaw(current []json.RawMessage, set *schema.Set) ([]json.RawMessa
 			order = append(order, band)
 		}
 		if v, _ := m["channel"].(string); v != "" {
-			radio["channel"] = set2raw(v)
+			// A specific channel is a JSON NUMBER (the UI sends 1, 40, ...); only
+			// "auto" is a string. Sending a numeric channel as a string trips
+			// api.err.DeviceNotSupport5gException on WiFi6 radios.
+			if n, err := strconv.Atoi(v); err == nil {
+				radio["channel"] = set2raw(n)
+			} else {
+				radio["channel"] = set2raw(v)
+			}
 		}
 		if v, _ := m["ht"].(int); v != 0 {
-			radio["ht"] = set2raw(v)
+			radio["ht"] = set2raw(v) // channel width is a JSON number (20/40/80/160)
 		}
 		if v, _ := m["tx_power_mode"].(string); v != "" {
 			radio["tx_power_mode"] = set2raw(v)
@@ -886,10 +899,15 @@ func mergeRadiosRaw(current []json.RawMessage, set *schema.Set) ([]json.RawMessa
 		if v, _ := m["tx_power"].(string); v != "" {
 			radio["tx_power"] = set2raw(v)
 		}
-		if v, _ := m["min_rssi"].(int); v != 0 {
-			radio["min_rssi"] = set2raw(v)
-			en, _ := m["min_rssi_enabled"].(bool)
-			radio["min_rssi_enabled"] = set2raw(en)
+		// The UI always sends min_rssi_enabled; min_rssi only when enabled.
+		if en, _ := m["min_rssi_enabled"].(bool); en {
+			radio["min_rssi_enabled"] = set2raw(true)
+			if v, _ := m["min_rssi"].(int); v != 0 {
+				radio["min_rssi"] = set2raw(v)
+			}
+		} else {
+			radio["min_rssi_enabled"] = set2raw(false)
+			delete(radio, "min_rssi")
 		}
 		byBand[band] = radio
 	}
