@@ -1114,9 +1114,11 @@ func customizeNetworkVPNClient(_ context.Context, d *schema.ResourceDiff, _ inte
 		return nil // no config (e.g. on destroy) — nothing to validate
 	}
 
+	// Shared by both WireGuard client and server networks.
+	sharedVPNFields := []string{"vpn_type", "wireguard_interface"}
 	// Fields that only belong on a vpn-client network (WireGuard client peer).
 	clientOnlyFields := []string{
-		"wireguard_interface", "wireguard_client_mode",
+		"wireguard_client_mode",
 		"wireguard_client_peer_ip", "wireguard_client_peer_public_key",
 		"x_wireguard_private_key", "wireguard_client_preshared_key",
 		"wireguard_client_peer_port", "uid_vpn_custom_routing",
@@ -1129,8 +1131,8 @@ func customizeNetworkVPNClient(_ context.Context, d *schema.ResourceDiff, _ inte
 
 	purpose, _ := d.Get("purpose").(string)
 
-	// A WireGuard VPN server (purpose = remote-user-vpn) shares vpn_type but has its
-	// own field set; reject only the client-specific fields here.
+	// A WireGuard VPN server (purpose = remote-user-vpn) shares vpn_type /
+	// wireguard_interface but has its own field set; reject only client-specific fields.
 	if purpose == "remote-user-vpn" {
 		for _, k := range clientOnlyFields {
 			if utils.IsRawConfigSet(raw, k) {
@@ -1144,7 +1146,7 @@ func customizeNetworkVPNClient(_ context.Context, d *schema.ResourceDiff, _ inte
 	}
 
 	if purpose != "vpn-client" {
-		for _, k := range append(append([]string{"vpn_type"}, clientOnlyFields...), serverOnlyFields...) {
+		for _, k := range append(append(append([]string{}, sharedVPNFields...), clientOnlyFields...), serverOnlyFields...) {
 			if utils.IsRawConfigSet(raw, k) {
 				return fmt.Errorf("%q is only valid when purpose = %q or %q", k, "vpn-client", "remote-user-vpn")
 			}
