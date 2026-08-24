@@ -50,8 +50,8 @@ github.com/biter777/countries v1.7.5 h1:MJ+n3+rSxWQdqVJU8eBy9RqcdH6ePPn4PJHocVWU
 github.com/biter777/countries v1.7.5/go.mod h1:1HSpZ526mYqKJcpT5Ti1kcGQ0L0SrXWIaptUWjFfv2E=
 github.com/blang/semver v3.5.1+incompatible h1:cQNTCjp13qL8KC3Nbxr/y2Bqb63oX6wdnnjpJbkM4JQ=
 github.com/blang/semver v3.5.1+incompatible/go.mod h1:kRBLl5iJ+tD4TcOOxsy/0fnwebNt5EWlYSAyrTnjyyk=
-github.com/blrvio/go-unifi/v10 v10.5.67-beta-4 h1:g7WOa5xkSF4Z4Yc3iCjqqhQae4/OOB8hZj5Vo9q/e3U=
-github.com/blrvio/go-unifi/v10 v10.5.67-beta-4/go.mod h1:1uT7uWZjl62o2iuDfU+sbcXbK8A9j7wGxcvOWN2uhf8=
+github.com/blrvio/go-unifi/v10 v10.5.67-beta-5 h1:wRAoSkI854Mo77vaFi/vymRLw22e2p5PXc2bFBKKZAU=
+github.com/blrvio/go-unifi/v10 v10.5.67-beta-5/go.mod h1:1uT7uWZjl62o2iuDfU+sbcXbK8A9j7wGxcvOWN2uhf8=
 github.com/bmatcuk/doublestar v1.1.1/go.mod h1:UD6OnuiIn0yFxxA2le/rnRU1G4RaI4UvFv1sNto9p6w=
 github.com/bmatcuk/doublestar/v4 v4.10.0 h1:zU9WiOla1YA122oLM6i4EXvGW62DvKZVxIe6TYWexEs=
 github.com/bmatcuk/doublestar/v4 v4.10.0/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fTSPVIjEY1Wr7jzc=

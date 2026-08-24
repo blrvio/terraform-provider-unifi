@@ -35,6 +35,7 @@ import (
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialfw"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialro"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/portal"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/qos"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/scheduletask"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/settings"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/spatialrecord"
@@ -251,6 +252,7 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		firewall.NewFirewallZonePolicyResource,
 		firewall.NewFirewallZonePolicyOrderResource,
 		portal.NewPortalFileResource,
+		qos.NewQOSRuleResource,
 		settings.NewAutoSpeedtestResource,
 		settings.NewConnectivityResource,
 		settings.NewCountryResource,
