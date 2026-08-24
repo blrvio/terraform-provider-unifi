@@ -8,7 +8,7 @@ go 1.26.0
 require (
 	github.com/apparentlymart/go-cidr v1.1.1
 	github.com/biter777/countries v1.7.5
-	github.com/blrvio/go-unifi/v10 v10.5.67
+	github.com/blrvio/go-unifi/v10 v10.5.68
 	github.com/deckarep/golang-set/v2 v2.9.0
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-cty v1.5.0
