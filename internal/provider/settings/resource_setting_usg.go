@@ -616,6 +616,8 @@ func (r *usgResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				MarkdownDescription: "Geographic IP filtering configuration that allows blocking or allowing traffic based on country of origin. " +
 					"This feature uses IP geolocation databases to identify the country associated with IP addresses and apply filtering rules. " +
 					"Useful for implementing country-specific access policies or blocking traffic from high-risk regions. Requires controller version 7.0 or later.",
+				DeprecationMessage: "On UniFi Network 10.x, Region Blocking is stored in a separate `usg_geo` setting and these fields " +
+					"no longer exist on the controller (writes here do not persist). Use the `unifi_setting_usg_geo` resource instead.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"mode": schema.StringAttribute{
