@@ -2,6 +2,7 @@ package device
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -505,26 +506,95 @@ func resourceDeviceUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 	req.ID = d.Id()
 	req.SiteID = site
 
-	// Radio table and Etherlighting are controller-side structures managed
-	// with patch semantics: fetch the device's current config once and overlay
-	// only the declared fields, so undeclared bands/fields keep their
-	// controller-side values. (Radio table additionally needs the full merged
-	// array sent because UniFi replaces arrays wholesale on PUT.) When neither
-	// block is declared, nothing extra is sent (prior behavior).
 	radios, _ := d.Get("radio").(*schema.Set)
 	etherLighting, _ := d.Get("ether_lighting").([]interface{})
-	if radios.Len() > 0 || len(etherLighting) > 0 {
+
+	// Radio updates must go through a byte-preserving RAW round-trip: WiFi6+ APs
+	// (e.g. UAP6MP) reject a PUT that drops per-radio capability fields the
+	// controller echoed on the GET (api.err.DeviceNotSupport5gException). The
+	// typed Device struct is lossy (unmodeled fields + omitempty zero-values), so
+	// GET the full device as raw JSON, overlay the declared device-level fields
+	// and only the declared radio scalars, and PUT the raw object intact.
+	if radios.Len() > 0 {
+		base, err := c.GetDeviceRaw(ctx, site, d.Id())
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("unable to read current device config for merge: %w", err))
+		}
+		origRadioTable := base["radio_table"]
+
+		if len(etherLighting) > 0 {
+			current, err := c.GetDevice(ctx, site, d.Id())
+			if err != nil {
+				return diag.FromErr(fmt.Errorf("unable to read current device config for merge: %w", err))
+			}
+			etherLightingMap, _ := etherLighting[0].(map[string]interface{})
+			req.EtherLighting = mergeEtherLighting(current.EtherLighting, etherLightingMap)
+		}
+
+		// Overlay the user's declared device-level fields (from the typed req)
+		// onto the full raw device, then override radio_table with the raw merge
+		// so per-radio capability fields survive byte-for-byte.
+		reqJSON, err := json.Marshal(req)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("encoding device update: %w", err))
+		}
+		var reqMap map[string]json.RawMessage
+		if err := json.Unmarshal(reqJSON, &reqMap); err != nil {
+			return diag.FromErr(fmt.Errorf("decoding device update: %w", err))
+		}
+		for k, v := range reqMap {
+			base[k] = v
+		}
+
+		var rawRadios []json.RawMessage
+		if err := json.Unmarshal(origRadioTable, &rawRadios); err != nil {
+			return diag.FromErr(fmt.Errorf("decoding radio_table: %w", err))
+		}
+		mergedRadios, err := mergeRadiosRaw(rawRadios, radios)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		base["radio_table"], err = json.Marshal(mergedRadios)
+		if err != nil {
+			return diag.FromErr(fmt.Errorf("encoding radio_table: %w", err))
+		}
+
+		rawResp, err := c.UpdateDeviceRaw(ctx, site, d.Id(), base)
+		if err != nil {
+			if errors.Is(err, unifi.ErrNotFound) {
+				d.SetId("")
+				return nil
+			}
+			// Turn the raw controller rejection into an actionable diagnostic. The
+			// byte-preserving merge is validated on UDM-Pro + UAP6MP; a 5G-support
+			// rejection here means the device model is not fully covered.
+			if utils.IsServerErrorContains(err, "DeviceNotSupport5g") {
+				return diag.Errorf("the controller rejected the radio update for this device with "+
+					"api.err.DeviceNotSupport5gException. Radio management is validated on UDM-Pro with WiFi6 APs "+
+					"(e.g. UAP6MP); this device model may expose radio fields the provider does not yet preserve. "+
+					"Please open an issue with the device model. Underlying error: %s", err)
+			}
+			return diag.FromErr(err)
+		}
+		resp, err := deviceFromRaw(rawResp)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+
+		if _, err := waitForDeviceState(ctx, d, meta, unifi.DeviceStateConnected, []unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStateProvisioning}, 1*time.Minute); err != nil {
+			return diag.FromErr(err)
+		}
+		return resourceDeviceSetResourceData(resp, d, site)
+	}
+
+	// Non-radio updates: Etherlighting still uses the typed patch-merge.
+	if len(etherLighting) > 0 {
 		current, err := c.GetDevice(ctx, site, d.Id())
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("unable to read current device config for merge: %w", err))
 		}
-		if radios.Len() > 0 {
-			req.RadioTable = mergeRadios(current.RadioTable, radios)
-		}
-		if len(etherLighting) > 0 {
-			etherLightingMap, _ := etherLighting[0].(map[string]interface{})
-			req.EtherLighting = mergeEtherLighting(current.EtherLighting, etherLightingMap)
-		}
+		etherLightingMap, _ := etherLighting[0].(map[string]interface{})
+		req.EtherLighting = mergeEtherLighting(current.EtherLighting, etherLightingMap)
 	}
 
 	// go-unifi v1.9.2's updateDevice converts a successful-but-empty PUT response into
@@ -766,6 +836,88 @@ func mergeRadios(current []unifi.DeviceRadioTable, set *schema.Set) []unifi.Devi
 		out = append(out, byBand[b])
 	}
 	return out
+}
+
+// mergeRadiosRaw is the byte-preserving counterpart of mergeRadios. It overlays
+// only the user-declared scalars (channel/ht/tx_power[_mode]/min_rssi[_enabled])
+// onto each band's RAW JSON object from the device GET, keeping every other field
+// — including per-radio capability fields the typed struct does not model or would
+// drop via omitempty (nss, radio_caps, has_ht160, current_antenna_gain, ...).
+// Sending the untouched fields back is what avoids
+// api.err.DeviceNotSupport5gException on WiFi6+ radios.
+func mergeRadiosRaw(current []json.RawMessage, set *schema.Set) ([]json.RawMessage, error) {
+	byBand := map[string]map[string]json.RawMessage{}
+	order := make([]string, 0, len(current))
+	for _, raw := range current {
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return nil, fmt.Errorf("decoding radio: %w", err)
+		}
+		var b struct {
+			Radio string `json:"radio"`
+		}
+		if err := json.Unmarshal(raw, &b); err != nil {
+			return nil, fmt.Errorf("decoding radio band: %w", err)
+		}
+		byBand[b.Radio] = m
+		order = append(order, b.Radio)
+	}
+
+	set2raw := func(v any) json.RawMessage { b, _ := json.Marshal(v); return b }
+
+	for _, item := range set.List() {
+		m, _ := item.(map[string]interface{})
+		band, _ := m["name"].(string)
+		radio, ok := byBand[band]
+		if !ok {
+			radio = map[string]json.RawMessage{"radio": set2raw(band)}
+			byBand[band] = radio
+			order = append(order, band)
+		}
+		if v, _ := m["channel"].(string); v != "" {
+			radio["channel"] = set2raw(v)
+		}
+		if v, _ := m["ht"].(int); v != 0 {
+			radio["ht"] = set2raw(v)
+		}
+		if v, _ := m["tx_power_mode"].(string); v != "" {
+			radio["tx_power_mode"] = set2raw(v)
+		}
+		if v, _ := m["tx_power"].(string); v != "" {
+			radio["tx_power"] = set2raw(v)
+		}
+		if v, _ := m["min_rssi"].(int); v != 0 {
+			radio["min_rssi"] = set2raw(v)
+			en, _ := m["min_rssi_enabled"].(bool)
+			radio["min_rssi_enabled"] = set2raw(en)
+		}
+		byBand[band] = radio
+	}
+
+	out := make([]json.RawMessage, 0, len(order))
+	for _, b := range order {
+		raw, err := json.Marshal(byBand[b])
+		if err != nil {
+			return nil, fmt.Errorf("encoding radio: %w", err)
+		}
+		out = append(out, raw)
+	}
+	return out, nil
+}
+
+// deviceFromRaw decodes a raw device map into the typed Device used to populate
+// Terraform state. The raw map is authoritative on the wire; the typed view is
+// only for reading back the attributes the provider models.
+func deviceFromRaw(raw unifi.DeviceRaw) (*unifi.Device, error) {
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("re-encoding raw device: %w", err)
+	}
+	var dev unifi.Device
+	if err := json.Unmarshal(b, &dev); err != nil {
+		return nil, fmt.Errorf("decoding device: %w", err)
+	}
+	return &dev, nil
 }
 
 func resourceDeviceGetResourceData(d *schema.ResourceData) (*unifi.Device, error) {

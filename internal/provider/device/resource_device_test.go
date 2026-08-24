@@ -1,6 +1,7 @@
 package device
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/blrvio/go-unifi/v10/unifi"
@@ -336,6 +337,60 @@ func TestMergeRadios_Preserves5GCapabilityFields(t *testing.T) {
 
 	ng, _ := radioByBand(got, "ng")
 	assert.Equal(t, "1", ng.Channel, "ng channel must be applied")
+}
+
+// TestMergeRadiosRaw_PreservesAllFields is the byte-level regression for
+// api.err.DeviceNotSupport5gException on a UAP6MP. It feeds a REAL 10.5.67
+// radio_table (including a field the typed struct does not model and zero-valued
+// fields it would drop), declares a change to the 2.4GHz radio only, and asserts
+// that (a) the 5GHz band is preserved field-for-field and (b) the declared
+// scalars are applied. This is the coverage the earlier typed-only unit test
+// lacked, which is why it missed the real PUT failure.
+func TestMergeRadiosRaw_PreservesAllFields(t *testing.T) {
+	// Real na (5GHz) radio + ng (2.4GHz), plus an unmodeled field to prove
+	// byte-preservation of things the provider does not know about.
+	current := []json.RawMessage{
+		json.RawMessage(`{"radio":"ng","channel":"auto","ht":20,"tx_power_mode":"auto","min_rssi_enabled":false,"current_antenna_gain":0,"nss":2,"radio_caps":123,"vendor_future_field":"keep-me"}`),
+		json.RawMessage(`{"radio":"na","channel":40,"ht":"80","nss":4,"radio_caps":251805700,"radio_caps2":31,"has_ht160":true,"max_txpower":26,"min_txpower":6,"min_rssi_enabled":false,"current_antenna_gain":0,"vendor_future_field":"keep-me-too"}`),
+	}
+
+	merged, err := mergeRadiosRaw(current, radioSet(map[string]interface{}{
+		"name": "ng", "channel": "1", "min_rssi": -75, "min_rssi_enabled": true,
+	}))
+	require.NoError(t, err)
+	require.Len(t, merged, 2)
+
+	byBand := map[string]map[string]json.RawMessage{}
+	for _, raw := range merged {
+		var m map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(raw, &m))
+		var b struct {
+			Radio string `json:"radio"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &b))
+		byBand[b.Radio] = m
+	}
+
+	// (a) na band: every original field preserved byte-for-byte, nothing dropped.
+	na := byBand["na"]
+	for k, want := range map[string]string{
+		"nss": "4", "radio_caps": "251805700", "radio_caps2": "31", "has_ht160": "true",
+		"max_txpower": "26", "min_txpower": "6", "min_rssi_enabled": "false",
+		"current_antenna_gain": "0", "channel": "40", "ht": `"80"`,
+		"vendor_future_field": `"keep-me-too"`,
+	} {
+		got, ok := na[k]
+		require.Truef(t, ok, "na.%s must be preserved", k)
+		assert.Equalf(t, want, string(got), "na.%s must be byte-preserved", k)
+	}
+
+	// (b) ng band: declared scalars applied; unmodeled/other fields preserved.
+	ng := byBand["ng"]
+	assert.Equal(t, `"1"`, string(ng["channel"]), "ng.channel must be applied")
+	assert.Equal(t, "-75", string(ng["min_rssi"]), "ng.min_rssi must be applied")
+	assert.Equal(t, "true", string(ng["min_rssi_enabled"]), "ng.min_rssi_enabled must be applied")
+	assert.Equal(t, `"keep-me"`, string(ng["vendor_future_field"]), "ng unmodeled field must be preserved")
+	assert.Equal(t, "123", string(ng["radio_caps"]), "ng.radio_caps must be preserved")
 }
 
 // Only non-zero declared fields overlay; unset fields keep the controller value.
