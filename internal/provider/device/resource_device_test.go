@@ -303,6 +303,41 @@ func TestMergeRadios_PreservesUndeclaredBands(t *testing.T) {
 	}
 }
 
+// TestMergeRadios_Preserves5GCapabilityFields locks the fix for
+// `400 api.err.DeviceNotSupport5gException` on a UAP6MP. Changing only the 2.4GHz
+// (`ng`) radio must re-emit the 5GHz (`na`) radio with its capability fields
+// (nss, radio_caps, radio_caps2, has_ht160, max/min_txpower) intact — the
+// controller rejects a radio_table PUT that drops them. mergeRadios starts from
+// the device's current radio_table, so once the SDK models these fields they
+// survive the merge unchanged.
+func TestMergeRadios_Preserves5GCapabilityFields(t *testing.T) {
+	current := []unifi.DeviceRadioTable{
+		{Radio: "ng", Channel: "auto", Ht: 20, TxPowerMode: "auto"},
+		{
+			Radio: "na", Channel: "40", Ht: 80, TxPowerMode: "auto",
+			Nss: 4, RadioCaps: 251805700, RadioCaps2: 31,
+			HasHt160: true, HasDfs: true, HasFccdfs: true,
+			Is11Ac: true, Is11Ax: true, MaxTxpower: 26, MinTxpower: 6,
+		},
+	}
+	got := mergeRadios(current, radioSet(map[string]interface{}{
+		"name": "ng", "channel": "1", "min_rssi": -75, "min_rssi_enabled": true,
+	}))
+
+	na, ok := radioByBand(got, "na")
+	require.True(t, ok, "na band must be preserved")
+	assert.Equal(t, 4, na.Nss, "nss dropped")
+	assert.Equal(t, 251805700, na.RadioCaps, "radio_caps dropped")
+	assert.Equal(t, 31, na.RadioCaps2, "radio_caps2 dropped")
+	assert.True(t, na.HasHt160, "has_ht160 dropped")
+	assert.True(t, na.Is11Ax, "is_11ax dropped")
+	assert.Equal(t, 26, na.MaxTxpower, "max_txpower dropped")
+	assert.Equal(t, 6, na.MinTxpower, "min_txpower dropped")
+
+	ng, _ := radioByBand(got, "ng")
+	assert.Equal(t, "1", ng.Channel, "ng channel must be applied")
+}
+
 // Only non-zero declared fields overlay; unset fields keep the controller value.
 func TestMergeRadios_OverlaysOnlyNonZero(t *testing.T) {
 	current := []unifi.DeviceRadioTable{{Radio: "ng", Channel: "6", Ht: 40, TxPowerMode: "medium"}}
