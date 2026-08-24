@@ -108,6 +108,7 @@ resource "unifi_network" "tailscale_lan" {
 * `wan` - External network connection (WAN uplink)
 * `vlan-only` - VLAN network without DHCP services
 * `vpn-client` - Site-to-site VPN client connection (see the `vpn_type` and `wireguard_client_*` arguments to configure a WireGuard VPN client)
+* `remote-user-vpn` - Remote-access VPN server (e.g. a WireGuard VPN server; see `vpn_type = wireguard-server` and the `wireguard_*` / `local_port` arguments)
 
 ### Optional
 
@@ -269,6 +270,8 @@ Only applicable when `ipv6_interface_type` is 'static'.
 Must be a valid IPv6 subnet allocated to your organization.
 
 This attribute is `Optional` + `Computed`: when omitted from configuration it inherits the current value reported by the controller, so a value configured in the UI (or read in via `terraform import`) is preserved rather than planned for removal. Note the standard `Optional`+`Computed` "sticky value" semantics — once the controller has a value, removing the attribute from configuration leaves that value in place rather than clearing it (the provider serializes this field with `omitempty`, so an empty value is never sent). There is therefore no way to clear it by deleting it from configuration; switch `ipv6_interface_type` away from 'static' to disable static IPv6 instead. Set it explicitly to manage the value from Terraform.
+- `local_port` (Number) The UDP port the WireGuard VPN server listens on (e.g. 51820). Only applicable when `vpn_type` is 'wireguard-server'.
+- `mss_clamp` (String) TCP MSS clamping mode for the WireGuard VPN server (e.g. `auto`). Only applicable when `vpn_type` is 'wireguard-server'.
 - `multicast_dns` (Boolean) Enables Multicast DNS (mDNS/Bonjour/Avahi) on the network. When enabled:
 * Allows device discovery (e.g., printers, Chromecasts)
 * Supports zero-configuration networking
@@ -286,9 +289,10 @@ This attribute is `Optional` + `Computed`: when omitted from configuration it in
 * 1-4094: Standard VLAN range for network segmentation
 * 0: Untagged/native VLAN
 * >4094: Reserved for special purposes
+- `vpn_binding_mode` (String) How the WireGuard VPN server binds to its egress interface (e.g. `interface`). Only applicable when `vpn_type` is 'wireguard-server'.
 - `vpn_client_default_route` (Boolean) When true, route all of the gateway's internet traffic through the VPN client tunnel. When false (default), only the destinations in `uid_vpn_custom_routing` are routed through the tunnel. Only applicable when `purpose` is 'vpn-client'.
 - `vpn_client_pull_dns` (Boolean) When true, use DNS servers advertised by the VPN peer for traffic on the tunnel. Only applicable when `purpose` is 'vpn-client'.
-- `vpn_type` (String) The VPN type for a `vpn-client` network. Currently `wireguard-client` is supported, which connects the gateway to a remote WireGuard server. Only applicable when `purpose` is 'vpn-client'. A `wireguard-client` network also requires `subnet` (the tunnel interface address, e.g. `10.0.0.2/32`) and `dhcp_dns` (interface DNS); the controller rejects the create without them.
+- `vpn_type` (String) The VPN type. `wireguard-client` connects the gateway to a remote WireGuard server (with `purpose = vpn-client`); `wireguard-server` runs a WireGuard VPN server on the gateway (with `purpose = remote-user-vpn`). A `wireguard-client` network also requires `subnet` (the tunnel interface address, e.g. `10.0.0.2/32`) and `dhcp_dns` (interface DNS); the controller rejects the create without them.
 - `wan_dhcp_v6_pd_size` (Number) The IPv6 prefix size to request from ISP. Must be between 48 and 64.
 Only applicable when `wan_type_v6` is 'dhcpv6'.
 - `wan_dns` (List of String) List of IPv4 DNS servers for WAN interface. Examples:
@@ -344,6 +348,7 @@ Choose based on your ISP's requirements.
 - `wireguard_client_preshared_key` (String, Sensitive) An optional WireGuard pre-shared key (PSK) for an additional layer of symmetric-key security with the peer. Keep this value secret. The controller may not return this value on read, so it is computed to avoid spurious drift. Only applicable when `vpn_type` is 'wireguard-client'.
 - `wireguard_client_preshared_key_enabled` (Boolean) Whether a WireGuard pre-shared key is used with the peer. Only applicable when `vpn_type` is 'wireguard-client'.
 - `wireguard_interface` (String) The WAN interface the WireGuard tunnel egresses from. One of `wan` or `wan2`. Only applicable when `vpn_type` is 'wireguard-client'.
+- `wireguard_interface_binding_mode_ip_version` (String) The IP version the WireGuard VPN server binds on. One of `v4` or `v6`. Only applicable when `vpn_type` is 'wireguard-server'.
 - `x_wan_password` (String) Password for WAN authentication.
 * Required for PPPoE connections
 * May be needed for some ISP configurations
@@ -353,6 +358,7 @@ Choose based on your ISP's requirements.
 ### Read-Only
 
 - `id` (String) The ID of the network.
+- `wireguard_id` (Number) The controller-assigned numeric id of the WireGuard server instance. Only applicable when `vpn_type` is 'wireguard-server'.
 - `wireguard_public_key` (String) The gateway's own WireGuard public key for this VPN client. The controller does not return it, so the provider derives it from the private key (Curve25519). Add this key as a peer on the remote WireGuard server. Only set when `vpn_type` is 'wireguard-client'.
 
 ## Import

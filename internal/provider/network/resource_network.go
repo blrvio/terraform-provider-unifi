@@ -51,9 +51,27 @@ var (
 	// This is a slightly larger range than the UI, it includes some reserved ones, so could be tightened up.
 	validateVLANID = validation.IntBetween(0, 4096)
 
+	// WAN IPv6 sizing/port fields default to 0 when the WAN is not IPv6-static / not a
+	// WireGuard client. Accept 0 (unset) OR the valid range so importing a WAN that
+	// leaves these unset doesn't fail validation.
+	validateWANDHCPv6PDSize      = intZeroOr(validation.IntBetween(48, 64))
+	validateWANPrefixlen         = intZeroOr(validation.IntBetween(1, 128))
+	validateWireguardPeerPortOpt = intZeroOr(validation.IsPortNumber)
+
 	ipV6RAPriorityRegexp   = regexp.MustCompile("high|medium|low")
 	validateIPV6RAPriority = validation.StringMatch(ipV6RAPriorityRegexp, "invalid IPv6 RA priority")
 )
+
+// intZeroOr accepts 0 (the "unset" sentinel these optional int fields carry when
+// they don't apply) or defers to inner for any non-zero value.
+func intZeroOr(inner schema.SchemaValidateFunc) schema.SchemaValidateFunc {
+	return func(i interface{}, k string) ([]string, []error) {
+		if v, ok := i.(int); ok && v == 0 {
+			return nil, nil
+		}
+		return inner(i, k)
+	}
+}
 
 func ResourceNetwork() *schema.Resource {
 	return &schema.Resource{
@@ -116,11 +134,13 @@ func ResourceNetwork() *schema.Resource {
 					"* `wan` - External network connection (WAN uplink)\n" +
 					"* `vlan-only` - VLAN network without DHCP services\n" +
 					"* `vpn-client` - Site-to-site VPN client connection (see the `vpn_type` and " +
-					"`wireguard_client_*` arguments to configure a WireGuard VPN client)",
+					"`wireguard_client_*` arguments to configure a WireGuard VPN client)\n" +
+					"* `remote-user-vpn` - Remote-access VPN server (e.g. a WireGuard VPN server; see " +
+					"`vpn_type = wireguard-server` and the `wireguard_*` / `local_port` arguments)",
 				Type:         schema.TypeString,
 				Required:     true,
 				ForceNew:     true,
-				ValidateFunc: validation.StringInSlice([]string{"corporate", "guest", "wan", "vlan-only", "vpn-client"}, false),
+				ValidateFunc: validation.StringInSlice([]string{"corporate", "guest", "wan", "vlan-only", "vpn-client", "remote-user-vpn"}, false),
 			},
 			"vlan_id": {
 				Description: "The VLAN ID for this network. Valid range is 0-4096. Common uses:\n" +
@@ -697,7 +717,7 @@ func ResourceNetwork() *schema.Resource {
 					"Only applicable when `wan_type_v6` is 'dhcpv6'.",
 				Type:         schema.TypeInt,
 				Optional:     true,
-				ValidateFunc: validation.IntBetween(48, 64),
+				ValidateFunc: validateWANDHCPv6PDSize,
 			},
 			"wan_ipv6": {
 				Description: "The static IPv6 address for WAN interface.\n" +
@@ -720,16 +740,53 @@ func ResourceNetwork() *schema.Resource {
 					"Only applicable when `wan_type_v6` is 'static'.",
 				Type:         schema.TypeInt,
 				Optional:     true,
-				ValidateFunc: validation.IntBetween(1, 128),
+				ValidateFunc: validateWANPrefixlen,
 			},
 			"vpn_type": {
-				Description: "The VPN type for a `vpn-client` network. Currently `wireguard-client` is supported, " +
-					"which connects the gateway to a remote WireGuard server. Only applicable when `purpose` is " +
-					"'vpn-client'. A `wireguard-client` network also requires `subnet` (the tunnel interface address, " +
-					"e.g. `10.0.0.2/32`) and `dhcp_dns` (interface DNS); the controller rejects the create without them.",
+				Description: "The VPN type. `wireguard-client` connects the gateway to a remote WireGuard server " +
+					"(with `purpose = vpn-client`); `wireguard-server` runs a WireGuard VPN server on the gateway " +
+					"(with `purpose = remote-user-vpn`). A `wireguard-client` network also requires `subnet` (the " +
+					"tunnel interface address, e.g. `10.0.0.2/32`) and `dhcp_dns` (interface DNS); the controller " +
+					"rejects the create without them.",
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"wireguard-client"}, false),
+				ValidateFunc: validation.StringInSlice([]string{"wireguard-client", "wireguard-server"}, false),
+			},
+			"wireguard_id": {
+				Description: "The controller-assigned numeric id of the WireGuard server instance. " +
+					"Only applicable when `vpn_type` is 'wireguard-server'.",
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+			"local_port": {
+				Description: "The UDP port the WireGuard VPN server listens on (e.g. 51820). " +
+					"Only applicable when `vpn_type` is 'wireguard-server'.",
+				Type:         schema.TypeInt,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: validation.IsPortNumber,
+			},
+			"vpn_binding_mode": {
+				Description: "How the WireGuard VPN server binds to its egress interface (e.g. `interface`). " +
+					"Only applicable when `vpn_type` is 'wireguard-server'.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
+			"mss_clamp": {
+				Description: "TCP MSS clamping mode for the WireGuard VPN server (e.g. `auto`). " +
+					"Only applicable when `vpn_type` is 'wireguard-server'.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
+			"wireguard_interface_binding_mode_ip_version": {
+				Description: "The IP version the WireGuard VPN server binds on. One of `v4` or `v6`. " +
+					"Only applicable when `vpn_type` is 'wireguard-server'.",
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: validation.StringInSlice([]string{"v4", "v6"}, false),
 			},
 			"wireguard_interface": {
 				Description: "The WAN interface the WireGuard tunnel egresses from. One of `wan` or `wan2`. " +
@@ -757,7 +814,7 @@ func ResourceNetwork() *schema.Resource {
 					"Only applicable when `vpn_type` is 'wireguard-client'.",
 				Type:         schema.TypeInt,
 				Optional:     true,
-				ValidateFunc: validation.IsPortNumber,
+				ValidateFunc: validateWireguardPeerPortOpt,
 			},
 			"wireguard_client_peer_public_key": {
 				Description: "The remote WireGuard server's public key (the peer the gateway connects to). " +
@@ -1021,6 +1078,14 @@ func resourceNetworkGetResourceData(d *schema.ResourceData) (*unifi.Network, err
 	n.WireguardClientPresharedKey, _ = d.Get("wireguard_client_preshared_key").(string)
 	n.WireguardClientPresharedKeyEnabled, _ = d.Get("wireguard_client_preshared_key_enabled").(bool)
 	n.XWireguardPrivateKey, _ = d.Get("x_wireguard_private_key").(string)
+
+	// WireGuard VPN server (purpose = "remote-user-vpn", vpn_type = "wireguard-server").
+	// wireguard_id is controller-assigned (computed), so it is not sent here.
+	n.LocalPort, _ = d.Get("local_port").(int)
+	n.VPNBindingMode, _ = d.Get("vpn_binding_mode").(string)
+	n.MssClamp, _ = d.Get("mss_clamp").(string)
+	n.WireguardInterfaceBindingModeIPVersion, _ = d.Get("wireguard_interface_binding_mode_ip_version").(string)
+
 	n.VPNClientDefaultRoute, _ = d.Get("vpn_client_default_route").(bool)
 	n.VPNClientPullDNS, _ = d.Get("vpn_client_pull_dns").(bool)
 
@@ -1387,17 +1452,22 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		"wan_username":               resp.WANUsername,
 		"x_wan_password":             resp.XWANPassword,
 
-		"vpn_type":                               resp.VPNType,
-		"wireguard_interface":                    resp.WireguardInterface,
-		"wireguard_client_mode":                  resp.WireguardClientMode,
-		"wireguard_client_peer_ip":               resp.WireguardClientPeerIP,
-		"wireguard_client_peer_port":             resp.WireguardClientPeerPort,
-		"wireguard_client_peer_public_key":       resp.WireguardClientPeerPublicKey,
-		"wireguard_client_preshared_key_enabled": resp.WireguardClientPresharedKeyEnabled,
-		"wireguard_public_key":                   wgPublicKey,
-		"vpn_client_default_route":               resp.VPNClientDefaultRoute,
-		"vpn_client_pull_dns":                    resp.VPNClientPullDNS,
-		"uid_vpn_custom_routing":                 utils.CidrListZeroBased(resp.UidVPNCustomRouting),
+		"vpn_type":         resp.VPNType,
+		"wireguard_id":     resp.WireguardID,
+		"local_port":       resp.LocalPort,
+		"vpn_binding_mode": resp.VPNBindingMode,
+		"mss_clamp":        resp.MssClamp,
+		"wireguard_interface_binding_mode_ip_version": resp.WireguardInterfaceBindingModeIPVersion,
+		"wireguard_interface":                         resp.WireguardInterface,
+		"wireguard_client_mode":                       resp.WireguardClientMode,
+		"wireguard_client_peer_ip":                    resp.WireguardClientPeerIP,
+		"wireguard_client_peer_port":                  resp.WireguardClientPeerPort,
+		"wireguard_client_peer_public_key":            resp.WireguardClientPeerPublicKey,
+		"wireguard_client_preshared_key_enabled":      resp.WireguardClientPresharedKeyEnabled,
+		"wireguard_public_key":                        wgPublicKey,
+		"vpn_client_default_route":                    resp.VPNClientDefaultRoute,
+		"vpn_client_pull_dns":                         resp.VPNClientPullDNS,
+		"uid_vpn_custom_routing":                      utils.CidrListZeroBased(resp.UidVPNCustomRouting),
 	}
 
 	// Write-only secrets: the controller may omit these on read. Only overwrite state when a
