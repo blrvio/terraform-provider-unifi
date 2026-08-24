@@ -142,9 +142,12 @@ func ResourcePortProfile() *schema.Resource {
 					"This is typically used for:\n" +
 					"* Access ports where devices need untagged access\n" +
 					"* Trunk ports to specify the native VLAN\n" +
-					"* Management networks for network devices",
+					"* Management networks for network devices\n\n" +
+					"When omitted, the controller auto-assigns the Default network; this attribute is `Computed` so it " +
+					"adopts that derived value and the plan converges without a perpetual diff.",
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 			},
 			"name": {
 				Description: "A descriptive name for the port profile. Examples:\n" +

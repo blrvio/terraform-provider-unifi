@@ -90,6 +90,8 @@ Use 'auto' for highest security, 'mac_based' for legacy devices, and 'multi_host
 * Access ports where devices need untagged access
 * Trunk ports to specify the native VLAN
 * Management networks for network devices
+
+When omitted, the controller auto-assigns the Default network; this attribute is `Computed` so it adopts that derived value and the plan converges without a perpetual diff.
 - `op_mode` (String) The operation mode for the port profile. Can only be `switch` Defaults to `switch`.
 - `poe_mode` (String) The POE mode for the port profile. Can be one of `auto`, `passv24`, `passthrough` or `off`.
 - `port_security_enabled` (Boolean) Enable MAC address-based port security. When enabled:
