@@ -279,6 +279,49 @@ func TestAccWLAN_fast_roaming_enabled(t *testing.T) {
 	})
 }
 
+func TestAccWLAN_bc_filter(t *testing.T) {
+	name := acctest.RandomWithPrefix("tfacc")
+	subnet, vlan := pt.GetTestVLAN(t)
+
+	AcceptanceTest(t, AcceptanceTestCase{
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWLANConfigBcFilter(name, subnet, vlan, true),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_wlan.test", "bc_filter_enabled", "true"),
+					resource.TestCheckResourceAttr("unifi_wlan.test", "bc_filter_list.#", "1"),
+				),
+			},
+			pt.ImportStep("unifi_wlan.test"),
+			{
+				Config: testAccWLANConfigBcFilter(name, subnet, vlan, false),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_wlan.test", "bc_filter_enabled", "false"),
+				),
+			},
+			pt.ImportStep("unifi_wlan.test"),
+		},
+	})
+}
+
+func TestAccWLAN_minrate_advertising_rates(t *testing.T) {
+	name := acctest.RandomWithPrefix("tfacc")
+	subnet, vlan := pt.GetTestVLAN(t)
+
+	AcceptanceTest(t, AcceptanceTestCase{
+		Steps: []resource.TestStep{
+			{
+				Config: testAccWLANConfigMinrateAdvertisingRates(name, subnet, vlan, true),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("unifi_wlan.test", "minrate_ng_advertising_rates", "true"),
+					resource.TestCheckResourceAttr("unifi_wlan.test", "minrate_na_advertising_rates", "true"),
+				),
+			},
+			pt.ImportStep("unifi_wlan.test"),
+		},
+	})
+}
+
 func TestAccWLAN_wpa3(t *testing.T) {
 	name := acctest.RandomWithPrefix("tfacc")
 	subnet, vlan := pt.GetTestVLAN(t)
@@ -609,4 +652,38 @@ resource "unifi_wlan" "test" {
 	minimum_data_rate_5g_kbps = %[3]d
 }
 `, name, min2g, min5g)
+}
+
+func testAccWLANConfigBcFilter(name string, subnet *net.IPNet, vlan int, bcFilterEnabled bool) string {
+	return testAccWLANBaseConfig(name, subnet, vlan) + fmt.Sprintf(`
+resource "unifi_wlan" "test" {
+	name          = "%[1]s"
+	network_id    = unifi_network.test.id
+	passphrase    = "12345678"
+	ap_group_ids  = [data.unifi_ap_group.default.id]
+	user_group_id = data.unifi_user_group.default.id
+	security      = "wpapsk"
+
+	bc_filter_enabled = %[2]t
+	bc_filter_list    = ["01:00:5e:00:00:fb"]
+}
+`, name, bcFilterEnabled)
+}
+
+func testAccWLANConfigMinrateAdvertisingRates(name string, subnet *net.IPNet, vlan int, advertising bool) string {
+	return testAccWLANBaseConfig(name, subnet, vlan) + fmt.Sprintf(`
+resource "unifi_wlan" "test" {
+	name          = "%[1]s"
+	network_id    = unifi_network.test.id
+	passphrase    = "12345678"
+	ap_group_ids  = [data.unifi_ap_group.default.id]
+	user_group_id = data.unifi_user_group.default.id
+	security      = "wpapsk"
+
+	minimum_data_rate_2g_kbps    = 6000
+	minimum_data_rate_5g_kbps    = 12000
+	minrate_ng_advertising_rates = %[2]t
+	minrate_na_advertising_rates = %[2]t
+}
+`, name, advertising)
 }

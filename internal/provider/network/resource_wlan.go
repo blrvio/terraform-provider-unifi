@@ -223,6 +223,40 @@ func ResourceWLAN() *schema.Resource {
 				Optional:    true,
 				Default:     false,
 			},
+			"bc_filter_enabled": {
+				Description: "Enable the Multicast and Broadcast Filter (a.k.a. broadcast blocker) on this WLAN. When enabled, most " +
+					"broadcast/multicast frames are dropped at the AP, reducing airtime overhead. Useful on IoT and guest SSIDs; " +
+					"avoid on networks that rely on broadcast/multicast discovery (e.g. mDNS/AirPlay/casting). Use `bc_filter_list` " +
+					"to allow specific destination MAC addresses through the filter.",
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
+			"bc_filter_list": {
+				Description: "List of destination MAC addresses (in XX:XX:XX:XX:XX:XX format) allowed through the broadcast/multicast " +
+					"filter. Only applied when `bc_filter_enabled` is true. MAC addresses are case-insensitive.",
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type:             schema.TypeString,
+					ValidateFunc:     validation.StringMatch(utils.MacAddressRegexp, "Mac address is invalid"),
+					DiffSuppressFunc: utils.MacDiffSuppressFunc,
+				},
+			},
+			"minrate_ng_advertising_rates": {
+				Description: "Advertise the configured 2.4GHz minimum data rate (and disable lower legacy 802.11b rates) in beacons " +
+					"and probe responses. Only meaningful when a 2.4GHz minimum data rate is set via `minimum_data_rate_2g_kbps`.",
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
+			"minrate_na_advertising_rates": {
+				Description: "Advertise the configured 5GHz minimum data rate in beacons and probe responses. Only meaningful when a " +
+					"5GHz minimum data rate is set via `minimum_data_rate_5g_kbps`.",
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
 			"minimum_data_rate_2g_kbps": {
 				Description: "Minimum data rate for 2.4GHz devices in Kbps. Use `0` to disable. Valid values: " +
 					utils.MarkdownValueListInt(wlanValidMinimumDataRate2g),
@@ -400,6 +434,18 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta interface{}) (*uni
 	bssTransition, _ := d.Get("bss_transition").(bool)
 	uapsd, _ := d.Get("uapsd").(bool)
 	fastRoaming, _ := d.Get("fast_roaming_enabled").(bool)
+	minrateNgAdvertisingRates, _ := d.Get("minrate_ng_advertising_rates").(bool)
+	minrateNaAdvertisingRates, _ := d.Get("minrate_na_advertising_rates").(bool)
+
+	bcFilterEnabled, _ := d.Get("bc_filter_enabled").(bool)
+	bcFilterListSet, _ := d.Get("bc_filter_list").(*schema.Set)
+	bcFilterList, err := utils.SetToStringSlice(bcFilterListSet)
+	if err != nil {
+		return nil, err
+	}
+	if !bcFilterEnabled {
+		bcFilterList = nil
+	}
 
 	return &unifi.WLAN{
 		Name:                    name,
@@ -441,11 +487,16 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta interface{}) (*uni
 
 		MinrateSettingPreference: minrateSettingPreference,
 
-		MinrateNgEnabled:      minRate2g != 0,
-		MinrateNgDataRateKbps: minRate2g,
+		MinrateNgEnabled:          minRate2g != 0,
+		MinrateNgDataRateKbps:     minRate2g,
+		MinrateNgAdvertisingRates: minrateNgAdvertisingRates,
 
-		MinrateNaEnabled:      minRate5g != 0,
-		MinrateNaDataRateKbps: minRate5g,
+		MinrateNaEnabled:          minRate5g != 0,
+		MinrateNaDataRateKbps:     minRate5g,
+		MinrateNaAdvertisingRates: minrateNaAdvertisingRates,
+
+		BroadcastFilterEnabled: bcFilterEnabled,
+		BroadcastFilterList:    bcFilterList,
 	}, nil
 }
 
@@ -496,6 +547,11 @@ func resourceWLANSetResourceData(resp *unifi.WLAN, d *schema.ResourceData, site 
 		macFilterPolicy = resp.MACFilterPolicy
 	}
 
+	var bcFilterList *schema.Set
+	if resp.BroadcastFilterEnabled {
+		bcFilterList = utils.StringSliceToSet(resp.BroadcastFilterList)
+	}
+
 	apGroupIDs := utils.StringSliceToSet(resp.ApGroupIDs)
 
 	schedule := listFromSchedules(resp.ScheduleWithDuration)
@@ -510,34 +566,38 @@ func resourceWLANSetResourceData(resp *unifi.WLAN, d *schema.ResourceData, site 
 	}
 
 	for key, value := range map[string]interface{}{
-		"site":                      site,
-		"name":                      resp.Name,
-		"user_group_id":             resp.UserGroupID,
-		"passphrase":                passphrase,
-		"hide_ssid":                 resp.HideSSID,
-		"is_guest":                  resp.IsGuest,
-		"security":                  security,
-		"wpa3_support":              wpa3,
-		"wpa3_transition":           wpa3Transition,
-		"multicast_enhance":         resp.MulticastEnhanceEnabled,
-		"mac_filter_enabled":        macFilterEnabled,
-		"mac_filter_list":           macFilterList,
-		"mac_filter_policy":         macFilterPolicy,
-		"radius_profile_id":         resp.RADIUSProfileID,
-		"schedule":                  schedule,
-		"wlan_band":                 resp.WLANBand,
-		"wlan_bands":                utils.StringSliceToSet(resp.WLANBands),
-		"no2ghz_oui":                resp.No2GhzOui,
-		"l2_isolation":              resp.L2Isolation,
-		"proxy_arp":                 resp.ProxyArp,
-		"bss_transition":            resp.BssTransition,
-		"uapsd":                     resp.UapsdEnabled,
-		"fast_roaming_enabled":      resp.FastRoamingEnabled,
-		"ap_group_ids":              apGroupIDs,
-		"network_id":                resp.NetworkID,
-		"pmf_mode":                  resp.PMFMode,
-		"minimum_data_rate_2g_kbps": minRate2g,
-		"minimum_data_rate_5g_kbps": minRate5g,
+		"site":                         site,
+		"name":                         resp.Name,
+		"user_group_id":                resp.UserGroupID,
+		"passphrase":                   passphrase,
+		"hide_ssid":                    resp.HideSSID,
+		"is_guest":                     resp.IsGuest,
+		"security":                     security,
+		"wpa3_support":                 wpa3,
+		"wpa3_transition":              wpa3Transition,
+		"multicast_enhance":            resp.MulticastEnhanceEnabled,
+		"mac_filter_enabled":           macFilterEnabled,
+		"mac_filter_list":              macFilterList,
+		"mac_filter_policy":            macFilterPolicy,
+		"radius_profile_id":            resp.RADIUSProfileID,
+		"schedule":                     schedule,
+		"wlan_band":                    resp.WLANBand,
+		"wlan_bands":                   utils.StringSliceToSet(resp.WLANBands),
+		"no2ghz_oui":                   resp.No2GhzOui,
+		"l2_isolation":                 resp.L2Isolation,
+		"proxy_arp":                    resp.ProxyArp,
+		"bss_transition":               resp.BssTransition,
+		"uapsd":                        resp.UapsdEnabled,
+		"fast_roaming_enabled":         resp.FastRoamingEnabled,
+		"bc_filter_enabled":            resp.BroadcastFilterEnabled,
+		"bc_filter_list":               bcFilterList,
+		"minrate_ng_advertising_rates": resp.MinrateNgAdvertisingRates,
+		"minrate_na_advertising_rates": resp.MinrateNaAdvertisingRates,
+		"ap_group_ids":                 apGroupIDs,
+		"network_id":                   resp.NetworkID,
+		"pmf_mode":                     resp.PMFMode,
+		"minimum_data_rate_2g_kbps":    minRate2g,
+		"minimum_data_rate_5g_kbps":    minRate5g,
 	} {
 		if err := d.Set(key, value); err != nil {
 			return diag.FromErr(err)

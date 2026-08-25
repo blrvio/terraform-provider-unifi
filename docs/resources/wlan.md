@@ -71,6 +71,8 @@ resource "unifi_wlan" "wifi" {
 ### Optional
 
 - `ap_group_ids` (Set of String) IDs of the AP groups that should broadcast this SSID. Used to control which access points broadcast this network.
+- `bc_filter_enabled` (Boolean) Enable the Multicast and Broadcast Filter (a.k.a. broadcast blocker) on this WLAN. When enabled, most broadcast/multicast frames are dropped at the AP, reducing airtime overhead. Useful on IoT and guest SSIDs; avoid on networks that rely on broadcast/multicast discovery (e.g. mDNS/AirPlay/casting). Use `bc_filter_list` to allow specific destination MAC addresses through the filter. Defaults to `false`.
+- `bc_filter_list` (Set of String) List of destination MAC addresses (in XX:XX:XX:XX:XX:XX format) allowed through the broadcast/multicast filter. Only applied when `bc_filter_enabled` is true. MAC addresses are case-insensitive.
 - `bss_transition` (Boolean) Enable BSS Transition Management to help clients roam between APs more efficiently. Defaults to `true`.
 - `fast_roaming_enabled` (Boolean) Enable 802.11r Fast BSS Transition for seamless roaming between APs. Requires client device support. Defaults to `false`.
 - `hide_ssid` (Boolean) When enabled, the access points will not broadcast the network name (SSID). Clients will need to manually enter the SSID to connect.
@@ -83,6 +85,8 @@ resource "unifi_wlan" "wifi" {
   * `deny` - Block listed MAC addresses Defaults to `deny`.
 - `minimum_data_rate_2g_kbps` (Number) Minimum data rate for 2.4GHz devices in Kbps. Use `0` to disable. Valid values: `1000`, `2000`, `5500`, `6000`, `9000`, `11000`, `12000`, `18000`, `24000`, `36000`, `48000`,  and `54000`
 - `minimum_data_rate_5g_kbps` (Number) Minimum data rate for 5GHz devices in Kbps. Use `0` to disable. Valid values: `6000`, `9000`, `12000`, `18000`, `24000`, `36000`, `48000`,  and `54000`
+- `minrate_na_advertising_rates` (Boolean) Advertise the configured 5GHz minimum data rate in beacons and probe responses. Only meaningful when a 5GHz minimum data rate is set via `minimum_data_rate_5g_kbps`. Defaults to `false`.
+- `minrate_ng_advertising_rates` (Boolean) Advertise the configured 2.4GHz minimum data rate (and disable lower legacy 802.11b rates) in beacons and probe responses. Only meaningful when a 2.4GHz minimum data rate is set via `minimum_data_rate_2g_kbps`. Defaults to `false`.
 - `multicast_enhance` (Boolean) Enable multicast enhancement to convert multicast traffic to unicast for better reliability and performance, especially for applications like video streaming.
 - `network_id` (String) ID of the network (VLAN) for this SSID. Used to assign the WLAN to a specific network segment.
 - `no2ghz_oui` (Boolean) When enabled, devices from specific manufacturers (identified by their OUI - Organizationally Unique Identifier) will be prevented from connecting on 2.4GHz and forced to use 5GHz. This improves overall network performance by ensuring capable devices use the less congested 5GHz band. Common examples include newer smartphones and laptops. Defaults to `true`.
