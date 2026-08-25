@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -42,15 +43,18 @@ func (m *aclL3IsolationModel) AttributeTypes() map[string]attr.Type {
 }
 
 // globalSwitchModel is the Terraform model for unifi_setting_global_switch. It
-// is intentionally NARROW: it models only the three switch-isolation fields of
-// the controller's `global_switch` setting object. The remaining fields of that
-// object (dhcp_snoop, dot1x_*, stp_version, jumboframe_enabled, etc.) are NOT
-// modeled and are preserved verbatim by the read-modify-write write path.
+// is intentionally NARROW: it models the switch-isolation fields plus the two
+// site-wide switching toggles (jumbo frames and flow control) of the
+// controller's `global_switch` setting object. The remaining fields of that
+// object (dhcp_snoop, dot1x_*, stp_version, etc.) are NOT modeled and are
+// preserved verbatim by the read-modify-write write path.
 type globalSwitchModel struct {
 	base.Model
-	ACLDeviceIsolation types.Set `tfsdk:"acl_device_isolation"`
-	ACLL3Isolation     types.Set `tfsdk:"acl_l3_isolation"`
-	SwitchExclusions   types.Set `tfsdk:"switch_exclusions"`
+	ACLDeviceIsolation types.Set  `tfsdk:"acl_device_isolation"`
+	ACLL3Isolation     types.Set  `tfsdk:"acl_l3_isolation"`
+	SwitchExclusions   types.Set  `tfsdk:"switch_exclusions"`
+	JumboframeEnabled  types.Bool `tfsdk:"jumboframe_enabled"`
+	FlowctrlEnabled    types.Bool `tfsdk:"flowctrl_enabled"`
 }
 
 // overlay applies only the configured (known and non-null) isolation fields of
@@ -116,6 +120,14 @@ func (m *globalSwitchModel) overlay(ctx context.Context, cur *unifi.SettingGloba
 		cur.AclL3Isolation = result
 	}
 
+	if ut.IsDefined(m.JumboframeEnabled) {
+		cur.JumboframeEnabled = m.JumboframeEnabled.ValueBool()
+	}
+
+	if ut.IsDefined(m.FlowctrlEnabled) {
+		cur.FlowctrlEnabled = m.FlowctrlEnabled.ValueBool()
+	}
+
 	return diags
 }
 
@@ -171,6 +183,9 @@ func (m *globalSwitchModel) Merge(ctx context.Context, other interface{}) diag.D
 	l3Set, d := types.SetValueFrom(ctx, types.ObjectType{AttrTypes: (&aclL3IsolationModel{}).AttributeTypes()}, entries)
 	diags.Append(d...)
 	m.ACLL3Isolation = l3Set
+
+	m.JumboframeEnabled = types.BoolValue(model.JumboframeEnabled)
+	m.FlowctrlEnabled = types.BoolValue(model.FlowctrlEnabled)
 
 	return diags
 }
@@ -240,9 +255,9 @@ func (r *globalSwitchResource) Schema(_ context.Context, _ resource.SchemaReques
 		MarkdownDescription: "The `unifi_setting_global_switch` resource manages the switch isolation settings " +
 			"(device isolation and ACL-based layer-3 isolation) for a UniFi site, exposed in the controller UI " +
 			"under **Settings → Network → Switch Isolation Settings**.\n\n" +
-			"This resource is intentionally narrow: it manages only the isolation-related fields of the " +
+			"This resource is intentionally narrow: it manages the isolation-related fields plus jumboframe_enabled and flowctrl_enabled of the " +
 			"controller's `global_switch` setting object. All other fields of that object (such as DHCP snooping, " +
-			"802.1X, STP, jumbo frames, and flow control) are preserved untouched using a read-modify-write write " +
+			"802.1X and STP) are preserved untouched using a read-modify-write write " +
 			"path, so this resource can be adopted without clobbering settings managed elsewhere " +
 			"(for example, DHCP snooping via `unifi_setting_usw`).\n\n" +
 			"~> **Requires controller version 7.2 or later.** The Switch Isolation Settings are only " +
@@ -254,6 +269,26 @@ func (r *globalSwitchResource) Schema(_ context.Context, _ resource.SchemaReques
 		Attributes: map[string]schema.Attribute{
 			"id":   ut.ID(),
 			"site": ut.SiteAttribute(),
+			"jumboframe_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable Jumbo Frames (MTU up to 9216 bytes) site-wide on managed switches. Improves " +
+					"throughput/efficiency for large-frame workloads (e.g. NAS/SAN, backups, SIEM). All devices in the path " +
+					"must support jumbo frames. Optional and Computed: if unset, the current controller value is retained.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"flowctrl_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Enable IEEE 802.3x flow control site-wide on managed switches. Usually left disabled " +
+					"on modern networks (can induce head-of-line blocking). Optional and Computed: if unset, the current " +
+					"controller value is retained.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"acl_device_isolation": schema.SetAttribute{
 				MarkdownDescription: "Set of device identifiers to isolate (the controller's **Device Isolation** control). " +
 					"Each element is sent to the controller verbatim, with no validation or normalization: the UniFi " +

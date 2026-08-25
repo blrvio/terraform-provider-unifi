@@ -96,8 +96,9 @@ resource "unifi_device" "sw%d" {
 	return b.String()
 }
 
-// gsSeedJumboframe sets a non-modeled field (jumboframe_enabled) out-of-band so
-// clobber-guard / adopt tests can assert the read-modify-write path preserves it.
+// gsSeedJumboframe sets jumboframe_enabled out-of-band so clobber-guard / adopt
+// tests can assert the read-modify-write path preserves it when the field is left
+// unset in config (it is Optional+Computed, so an unconfigured value round-trips).
 // Invoked from a step PreConfig (under settingGlobalSwitchLock). Note: the
 // controller's switch_exclusions field is omitempty, so it cannot be cleared via
 // the API (mirroring the resource's documented limitation); a leftover value from
@@ -217,9 +218,10 @@ resource "unifi_setting_global_switch" "test" {
 }
 
 // TestAccSettingGlobalSwitch_clobberGuard is the flagship read-modify-write
-// regression: it seeds a non-modeled field (jumboframe_enabled) out-of-band, then
-// manages only switch_exclusions. The seeded toggle must survive both Create and
-// Update (when the managed value changes to a different adopted switch).
+// regression: it seeds jumboframe_enabled out-of-band and leaves it unset in
+// config, then manages only switch_exclusions. The unconfigured toggle must
+// survive both Create and Update (when the managed value changes to a different
+// adopted switch).
 func TestAccSettingGlobalSwitch_clobberGuard(t *testing.T) {
 	macs := nonPoolSwitchMACs(t, 2)
 	devices := gsAdoptSwitches(macs[0], macs[1])
@@ -275,6 +277,43 @@ func TestAccSettingGlobalSwitch_adoptWithoutManaging(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(settingGlobalSwitchResourceName, "id"),
 					checkGlobalSwitchJumboframe(t, true),
+				),
+			},
+		},
+	})
+}
+
+// TestAccSettingGlobalSwitch_jumboframe manages jumboframe_enabled/flowctrl_enabled
+// directly (create true, then update to false), asserting both the resource state
+// and the controller's persisted value via the raw API.
+func TestAccSettingGlobalSwitch_jumboframe(t *testing.T) {
+	on := `resource "unifi_setting_global_switch" "test" {
+	jumboframe_enabled = true
+	flowctrl_enabled   = false
+}`
+	off := `resource "unifi_setting_global_switch" "test" {
+	jumboframe_enabled = false
+	flowctrl_enabled   = false
+}`
+
+	AcceptanceTest(t, AcceptanceTestCase{
+		VersionConstraint: ">= 7.2",
+		Lock:              settingGlobalSwitchLock,
+		Steps: []resource.TestStep{
+			{
+				Config: on,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(settingGlobalSwitchResourceName, "jumboframe_enabled", "true"),
+					resource.TestCheckResourceAttr(settingGlobalSwitchResourceName, "flowctrl_enabled", "false"),
+					checkGlobalSwitchJumboframe(t, true),
+				),
+			},
+			pt.ImportStepWithSite(settingGlobalSwitchResourceName),
+			{
+				Config: off,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(settingGlobalSwitchResourceName, "jumboframe_enabled", "false"),
+					checkGlobalSwitchJumboframe(t, false),
 				),
 			},
 		},

@@ -111,6 +111,34 @@ func TestOverlayPreservesUnmanagedFields(t *testing.T) {
 	assert.Equal(t, []string{"aa:bb:cc:dd:ee:ff"}, cur.SwitchExclusions)
 }
 
+// TestOverlaySwitchingToggles proves the two modeled switching toggles are
+// written onto the controller object when configured (known, non-null) and left
+// untouched when null (unconfigured), matching the read-modify-write contract.
+func TestOverlaySwitchingToggles(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Configured: jumboframe true, flowctrl false -> both overwrite cur.
+	cur := &unifi.SettingGlobalSwitch{JumboframeEnabled: false, FlowctrlEnabled: true}
+	m := &globalSwitchModel{
+		JumboframeEnabled: types.BoolValue(true),
+		FlowctrlEnabled:   types.BoolValue(false),
+	}
+	require.False(t, m.overlay(ctx, cur).HasError())
+	assert.True(t, cur.JumboframeEnabled)
+	assert.False(t, cur.FlowctrlEnabled)
+
+	// Unconfigured (null): existing controller values are preserved.
+	cur2 := &unifi.SettingGlobalSwitch{JumboframeEnabled: true, FlowctrlEnabled: true}
+	m2 := &globalSwitchModel{
+		JumboframeEnabled: types.BoolNull(),
+		FlowctrlEnabled:   types.BoolNull(),
+	}
+	require.False(t, m2.overlay(ctx, cur2).HasError())
+	assert.True(t, cur2.JumboframeEnabled)
+	assert.True(t, cur2.FlowctrlEnabled)
+}
+
 // TestOverlayNormalizesAndDedups checks MAC normalization on switch_exclusions
 // and source_network dedup on acl_l3_isolation.
 func TestOverlayNormalizesAndDedups(t *testing.T) {
