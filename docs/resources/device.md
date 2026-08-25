@@ -97,6 +97,12 @@ resource "unifi_device" "us_24_poe" {
 * Device must be in a pending adoption state
 * Device must be accessible on the network
 Set to false if you want to manage adoption manually. Defaults to `true`.
+- `bandsteering_mode` (String) Band steering mode for access points, nudging dual-band clients toward the less-congested 5GHz radio. Valid values:
+  * `off` - Disable band steering
+  * `equal` - Balance clients across 2.4GHz and 5GHz
+  * `prefer_5g` - Steer dual-band-capable clients to 5GHz
+
+Only applies to access points; ignored by switches and gateways.
 - `ether_lighting` (Block List, Max: 1) Etherlighting configuration for switches with per-port LEDs (e.g. USW Pro Max). `mode = "network"` colors each port's LED by the VLAN/network it serves (per-network colors come from the site-level Etherlighting palette); `mode = "speed"` colors by link speed. Only the fields you set are written — unset fields keep their controller-side values (read-modify-write overlay). Devices without Etherlighting hardware ignore this object. (see [below for nested schema](#nestedblock--ether_lighting))
 - `forget_on_destroy` (Boolean) Whether to forget (un-adopt) the device when this resource is destroyed. When true:
 * The device will be removed from the controller

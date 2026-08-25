@@ -73,6 +73,17 @@ func ResourceDevice() *schema.Resource {
 				Type:        schema.TypeBool,
 				Computed:    true,
 			},
+			"bandsteering_mode": {
+				Description: "Band steering mode for access points, nudging dual-band clients toward the less-congested 5GHz radio. Valid values:\n" +
+					"  * `off` - Disable band steering\n" +
+					"  * `equal` - Balance clients across 2.4GHz and 5GHz\n" +
+					"  * `prefer_5g` - Steer dual-band-capable clients to 5GHz\n\n" +
+					"Only applies to access points; ignored by switches and gateways.",
+				Type:         schema.TypeString,
+				Optional:     true,
+				Computed:     true,
+				ValidateFunc: validation.StringInSlice([]string{"off", "equal", "prefer_5g"}, false),
+			},
 			"switch_vlan_enabled": {
 				Description: "Whether per-port VLAN configuration is enabled on the device. Required for `port_override` blocks with VLAN-tagging profiles (e.g. an IoT-VLAN `port_profile_id`) to actually take effect on access points that expose passthrough Ethernet ports (UAP-UHDIW and similar in-wall units). " +
 					"Switches honor port profile VLAN bindings unconditionally; APs ignore them unless this flag is true. " +
@@ -557,6 +568,9 @@ func resourceDeviceUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		if v, ok := reqMap["name"]; ok {
 			putMap["name"] = v
 		}
+		if v, ok := reqMap["bandsteering_mode"]; ok {
+			putMap["bandsteering_mode"] = v
+		}
 
 		var rawRadios []json.RawMessage
 		if err := json.Unmarshal(origRadioTable, &rawRadios); err != nil {
@@ -703,6 +717,7 @@ func resourceDeviceSetResourceData(resp *unifi.Device, d *schema.ResourceData, s
 		"mac":                 resp.MAC,
 		"name":                resp.Name,
 		"disabled":            resp.Disabled,
+		"bandsteering_mode":   resp.BandsteeringMode,
 		"switch_vlan_enabled": resp.SwitchVLANEnabled,
 		"port_override":       portOverrides,
 		"radio":               radiosFromDevice(resp, d),
@@ -816,6 +831,7 @@ func fromRadio(r unifi.DeviceRadioTable) map[string]interface{} {
 // (_id/mac/site_id/state/adopted) are omitted, matching the UI exactly.
 var uiDeviceConfigFields = map[string]bool{
 	"name":                          true,
+	"bandsteering_mode":             true,
 	"snmp_contact":                  true,
 	"snmp_location":                 true,
 	"mgmt_network_id":               true,
@@ -950,11 +966,13 @@ func resourceDeviceGetResourceData(d *schema.ResourceData) (*unifi.Device, error
 	mac, _ := d.Get("mac").(string)
 	name, _ := d.Get("name").(string)
 	switchVLANEnabled, _ := d.Get("switch_vlan_enabled").(bool)
+	bandsteeringMode, _ := d.Get("bandsteering_mode").(string)
 
 	return &unifi.Device{
 		MAC:               mac,
 		Name:              name,
 		SwitchVLANEnabled: switchVLANEnabled,
+		BandsteeringMode:  bandsteeringMode,
 		PortOverrides:     pos,
 	}, nil
 }
