@@ -188,13 +188,21 @@ func (r *rsyslogdResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Required:            true,
 			},
 			"contents": schema.ListAttribute{
-				MarkdownDescription: "List of log types to include in the remote syslog. Valid values: device, client, firewall_default_policy, triggers, updates, admin_activity, critical, security_detections, vpn.",
+				MarkdownDescription: "List of log types to include in the remote syslog. Valid values: device, client, firewall_default_policy, triggers, updates, admin_activity, critical, security_detections, vpn, switches, access_points, gateway.",
 				Optional:            true,
 				Computed:            true,
 				ElementType:         types.StringType,
 				Validators: []validator.List{
 					listvalidator.SizeAtLeast(1),
-					listvalidator.ValueStringsAre(stringvalidator.OneOf("device", "client", "firewall_default_policy", "triggers", "updates", "admin_activity", "critical", "security_detections", "vpn")),
+					listvalidator.ValueStringsAre(stringvalidator.OneOf(
+						// Documented in the controller field schema (codegen v9.5.21).
+						"device", "client", "firewall_default_policy", "triggers", "updates",
+						"admin_activity", "critical", "security_detections", "vpn",
+						// Undocumented but persisted by 10.x controllers (device-class
+						// sub-selections under "device"). Rejecting them made the resource
+						// unable to represent — and silently destroyed — existing state.
+						"switches", "access_points", "gateway",
+					)),
 				},
 			},
 			"debug": schema.BoolAttribute{

@@ -49,7 +49,7 @@ resource "unifi_setting_rsyslogd" "example" {
 
 ### Optional
 
-- `contents` (List of String) List of log types to include in the remote syslog. Valid values: device, client, firewall_default_policy, triggers, updates, admin_activity, critical, security_detections, vpn.
+- `contents` (List of String) List of log types to include in the remote syslog. Valid values: device, client, firewall_default_policy, triggers, updates, admin_activity, critical, security_detections, vpn, switches, access_points, gateway.
 - `debug` (Boolean) Whether debug logging is enabled.
 - `ip` (String) IP address of the remote syslog server.
 - `log_all_contents` (Boolean) Whether to log all content types.
