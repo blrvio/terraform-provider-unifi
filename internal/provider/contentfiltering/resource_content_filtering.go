@@ -15,38 +15,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
 )
-
-// scheduleModel is the single nested `schedule` block of a content filtering rule.
-type scheduleModel struct {
-	Mode           types.String `tfsdk:"mode"`
-	Date           types.String `tfsdk:"date"`
-	DateStart      types.String `tfsdk:"date_start"`
-	DateEnd        types.String `tfsdk:"date_end"`
-	RepeatOnDays   types.Set    `tfsdk:"repeat_on_days"`
-	TimeAllDay     types.Bool   `tfsdk:"time_all_day"`
-	TimeRangeStart types.String `tfsdk:"time_range_start"`
-	TimeRangeEnd   types.String `tfsdk:"time_range_end"`
-}
-
-func (m scheduleModel) AttributeTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"mode":             types.StringType,
-		"date":             types.StringType,
-		"date_start":       types.StringType,
-		"date_end":         types.StringType,
-		"repeat_on_days":   types.SetType{ElemType: types.StringType},
-		"time_all_day":     types.BoolType,
-		"time_range_start": types.StringType,
-		"time_range_end":   types.StringType,
-	}
-}
 
 // ContentFilteringModel represents the data model for a UniFi content filtering rule.
 type ContentFilteringModel struct {
@@ -81,13 +55,6 @@ func stringSetOrEmpty(ctx context.Context, elemType attr.Type, values []string) 
 	return types.SetValueFrom(ctx, elemType, values)
 }
 
-// isZeroSchedule reports whether the API schedule carries no configuration, so an
-// unset schedule round-trips to a null object rather than an empty-but-present one.
-func isZeroSchedule(s unifi.ContentFilteringSchedule) bool {
-	return s.Mode == "" && s.Date == "" && s.DateStart == "" && s.DateEnd == "" &&
-		s.TimeRangeStart == "" && s.TimeRangeEnd == "" && !s.TimeAllDay && len(s.RepeatOnDays) == 0
-}
-
 // AsUnifiModel converts the Terraform model to the UniFi API model.
 func (m *ContentFilteringModel) AsUnifiModel(ctx context.Context) (interface{}, diag.Diagnostics) {
 	diags := diag.Diagnostics{}
@@ -113,28 +80,20 @@ func (m *ContentFilteringModel) AsUnifiModel(ctx context.Context) (interface{}, 
 		return nil, diags
 	}
 
-	var schedule unifi.ContentFilteringSchedule
-	if ut.IsDefined(m.Schedule) {
-		var sm scheduleModel
-		diags.Append(m.Schedule.As(ctx, &sm, basetypes.ObjectAsOptions{})...)
-		if diags.HasError() {
-			return nil, diags
-		}
-		repeatOnDays, rd := stringSlice(ctx, sm.RepeatOnDays)
-		diags.Append(rd...)
-		if diags.HasError() {
-			return nil, diags
-		}
-		schedule = unifi.ContentFilteringSchedule{
-			Mode:           sm.Mode.ValueString(),
-			Date:           sm.Date.ValueString(),
-			DateStart:      sm.DateStart.ValueString(),
-			DateEnd:        sm.DateEnd.ValueString(),
-			RepeatOnDays:   repeatOnDays,
-			TimeAllDay:     sm.TimeAllDay.ValueBool(),
-			TimeRangeStart: sm.TimeRangeStart.ValueString(),
-			TimeRangeEnd:   sm.TimeRangeEnd.ValueString(),
-		}
+	sv, d := ut.ScheduleFromObject(ctx, m.Schedule)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	schedule := unifi.ContentFilteringSchedule{
+		Mode:           sv.Mode,
+		Date:           sv.Date,
+		DateStart:      sv.DateStart,
+		DateEnd:        sv.DateEnd,
+		RepeatOnDays:   sv.RepeatOnDays,
+		TimeAllDay:     sv.TimeAllDay,
+		TimeRangeStart: sv.TimeRangeStart,
+		TimeRangeEnd:   sv.TimeRangeEnd,
 	}
 
 	return &unifi.ContentFiltering{
@@ -179,25 +138,12 @@ func (m *ContentFilteringModel) Merge(ctx context.Context, other interface{}) di
 	m.SafeSearch, d = stringSetOrEmpty(ctx, types.StringType, model.SafeSearch)
 	diags.Append(d...)
 
-	if isZeroSchedule(model.Schedule) {
-		m.Schedule, d = ut.ObjectNull(&scheduleModel{})
-		diags.Append(d...)
-	} else {
-		repeatOnDays, rd := stringSetOrEmpty(ctx, types.StringType, model.Schedule.RepeatOnDays)
-		diags.Append(rd...)
-		sm := scheduleModel{
-			Mode:           ut.StringOrNull(model.Schedule.Mode),
-			Date:           ut.StringOrNull(model.Schedule.Date),
-			DateStart:      ut.StringOrNull(model.Schedule.DateStart),
-			DateEnd:        ut.StringOrNull(model.Schedule.DateEnd),
-			RepeatOnDays:   repeatOnDays,
-			TimeAllDay:     types.BoolValue(model.Schedule.TimeAllDay),
-			TimeRangeStart: ut.StringOrNull(model.Schedule.TimeRangeStart),
-			TimeRangeEnd:   ut.StringOrNull(model.Schedule.TimeRangeEnd),
-		}
-		m.Schedule, d = types.ObjectValueFrom(ctx, sm.AttributeTypes(), sm)
-		diags.Append(d...)
-	}
+	s := model.Schedule
+	m.Schedule, d = ut.ScheduleToObject(ctx, ut.ScheduleValues{
+		Mode: s.Mode, Date: s.Date, DateStart: s.DateStart, DateEnd: s.DateEnd, RepeatOnDays: s.RepeatOnDays,
+		TimeAllDay: s.TimeAllDay, TimeRangeStart: s.TimeRangeStart, TimeRangeEnd: s.TimeRangeEnd,
+	})
+	diags.Append(d...)
 
 	return diags
 }
@@ -329,53 +275,7 @@ func (r *contentFilteringResource) Schema(_ context.Context, _ resource.SchemaRe
 					setvalidator.ValueStringsAre(stringvalidator.OneOf("GOOGLE", "YOUTUBE", "BING")),
 				},
 			},
-			"schedule": schema.SingleNestedAttribute{
-				MarkdownDescription: "An optional schedule that constrains when the rule is active.",
-				Optional:            true,
-				Attributes: map[string]schema.Attribute{
-					"mode": schema.StringAttribute{
-						MarkdownDescription: "The schedule mode. One of `ALWAYS`, `EVERY_DAY`, `EVERY_WEEK`, " +
-							"`ONE_TIME_ONLY`, `CUSTOM`.",
-						Required: true,
-						Validators: []validator.String{
-							stringvalidator.OneOf("ALWAYS", "EVERY_DAY", "EVERY_WEEK", "ONE_TIME_ONLY", "CUSTOM"),
-						},
-					},
-					"date": schema.StringAttribute{
-						MarkdownDescription: "A single date (`YYYY-MM-DD`) for one-time schedules.",
-						Optional:            true,
-					},
-					"date_start": schema.StringAttribute{
-						MarkdownDescription: "The start date (`YYYY-MM-DD`) of the schedule window.",
-						Optional:            true,
-					},
-					"date_end": schema.StringAttribute{
-						MarkdownDescription: "The end date (`YYYY-MM-DD`) of the schedule window.",
-						Optional:            true,
-					},
-					"repeat_on_days": schema.SetAttribute{
-						MarkdownDescription: "Days of the week the schedule repeats on. Each of `mon`, `tue`, " +
-							"`wed`, `thu`, `fri`, `sat`, `sun`.",
-						Optional:    true,
-						ElementType: types.StringType,
-						Validators: []validator.Set{
-							setvalidator.ValueStringsAre(stringvalidator.OneOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")),
-						},
-					},
-					"time_all_day": schema.BoolAttribute{
-						MarkdownDescription: "Whether the rule is active for the entire day.",
-						Optional:            true,
-					},
-					"time_range_start": schema.StringAttribute{
-						MarkdownDescription: "The start time (`HH:MM`) of the active window.",
-						Optional:            true,
-					},
-					"time_range_end": schema.StringAttribute{
-						MarkdownDescription: "The end time (`HH:MM`) of the active window.",
-						Optional:            true,
-					},
-				},
-			},
+			"schedule": ut.ScheduleAttribute("An optional schedule that constrains when the rule is active."),
 		},
 	}
 }
