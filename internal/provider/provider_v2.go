@@ -33,6 +33,7 @@ import (
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspotop"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspotpackage"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/mediafile"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/nat"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialfw"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialro"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/portal"
@@ -229,6 +230,7 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		channelplan.NewChannelPlanResource,
 		contentfiltering.NewContentFilteringResource,
 		wan.NewWANLoadBalancingResource,
+		nat.NewNatRuleResource,
 		appblock.NewFirewallAppBlockResource,
 		dhcpoption.NewDHCPOptionResource,
 		scheduletask.NewScheduleTaskResource,
