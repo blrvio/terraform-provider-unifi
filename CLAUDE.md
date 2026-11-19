@@ -6,7 +6,7 @@ Fork of [`filipowm/terraform-provider-unifi`](https://github.com/filipowm/terraf
 itself a fork of the original `paultyng/terraform-provider-unifi`.
 
 Stack: Go 1.26 · terraform-plugin-framework v1.19.0 · terraform-plugin-sdk/v2 v2.40.1 ·
-terraform-plugin-mux v0.23.1 · terraform-plugin-testing v1.16.0 · go-unifi/v10 v10.5.67.
+terraform-plugin-mux v0.23.1 · terraform-plugin-testing v1.16.0 · go-unifi/v11 v11.0.99.
 
 Authentication is **API-key only** (`api_key` / `UNIFI_API_KEY`); username/password auth was
 removed in go-unifi v10.
