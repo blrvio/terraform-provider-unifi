@@ -165,7 +165,7 @@ func ResourceDevice() *schema.Resource {
 							Type:         schema.TypeString,
 							Optional:     true,
 							Default:      "switch",
-							ValidateFunc: validation.StringInSlice([]string{"switch", "mirror", "aggregate"}, false),
+							ValidateFunc: validation.StringInSlice([]string{"", "switch", "mirror", "aggregate"}, false),
 							DiffSuppressFunc: func(k, old, newValue string, d *schema.ResourceData) bool {
 								if old == "" && newValue == "switch" {
 									return true
@@ -189,7 +189,7 @@ func ResourceDevice() *schema.Resource {
 								"  - To prevent unwanted power delivery",
 							Type:         schema.TypeString,
 							Optional:     true,
-							ValidateFunc: validation.StringInSlice([]string{"auto", "pasv24", "passthrough", "off"}, false),
+							ValidateFunc: validation.StringInSlice([]string{"", "auto", "pasv24", "passthrough", "off"}, false),
 						},
 						"aggregate_num_ports": {
 							Description: "The number of ports to include in a link aggregation group (LAG). Valid range: 2-8 ports. Used when:\n" +
@@ -199,7 +199,7 @@ func ResourceDevice() *schema.Resource {
 								"Note: All ports in the LAG must be sequential and have matching configurations.",
 							Type:         schema.TypeInt,
 							Optional:     true,
-							ValidateFunc: validation.IntBetween(2, 8),
+							ValidateFunc: validation.Any(validation.IntInSlice([]int{0}), validation.IntBetween(2, 8)),
 							DiffSuppressFunc: func(k, old, newValue string, d *schema.ResourceData) bool {
 								if old == strconv.Itoa(0) && newValue == "" {
 									return true
@@ -402,7 +402,10 @@ func ResourceDevice() *schema.Resource {
 					"* The device will be removed from the controller\n" +
 					"* The device will need to be readopted to be managed again\n" +
 					"* Device configuration will be reset\n" +
-					"Set to false to keep the device adopted when removing from Terraform management.",
+					"Set to false to keep the device adopted when removing from Terraform management.\n\n" +
+					"Import does not set this attribute (it is destructive): an imported device stays un-forgotten on destroy " +
+					"until the configuration sets it, and the first plan after an import shows it unless it is set explicitly " +
+					"(`forget_on_destroy = false` keeps the device adopted).",
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
@@ -446,6 +449,12 @@ func resourceDeviceImport(ctx context.Context, d *schema.ResourceData, meta inte
 		if err := d.Set("site", site); err != nil {
 			return nil, err
 		}
+	}
+	// allow_adoption only matters on create. forget_on_destroy is destructive and is
+	// deliberately not defaulted here: an imported device is never forgotten on destroy
+	// unless the configuration says so.
+	if err := base.SetImportDefaults(d, map[string]interface{}{"allow_adoption": true}); err != nil {
+		return nil, err
 	}
 
 	return []*schema.ResourceData{d}, nil

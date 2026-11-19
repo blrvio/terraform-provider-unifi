@@ -199,7 +199,7 @@ func TestAccDevice_switch_basic(t *testing.T) {
 	device, unallocateDevice := allocateDevice(t)
 	defer unallocateDevice()
 
-	importStateVerifyIgnore := []string{"allow_adoption", "forget_on_destroy", "name"}
+	importStateVerifyIgnore := []string{"forget_on_destroy", "name"}
 
 	AcceptanceTest(t, AcceptanceTestCase{
 		PreCheck: func() {
@@ -258,7 +258,7 @@ func TestAccDevice_switch_portOverrides(t *testing.T) {
 	device, unallocateDevice := allocateDevice(t)
 	defer unallocateDevice()
 
-	importStateVerifyIgnore := []string{"allow_adoption", "forget_on_destroy", "name"}
+	importStateVerifyIgnore := []string{"forget_on_destroy", "name"}
 
 	AcceptanceTest(t, AcceptanceTestCase{
 		PreCheck: func() {
@@ -341,7 +341,7 @@ func TestAccDevice_switch_portOverrides_inlineVLAN(t *testing.T) {
 	device, unallocateDevice := allocateDevice(t)
 	defer unallocateDevice()
 
-	importStateVerifyIgnore := []string{"allow_adoption", "forget_on_destroy", "name"}
+	importStateVerifyIgnore := []string{"forget_on_destroy", "name"}
 
 	AcceptanceTest(t, AcceptanceTestCase{
 		PreCheck: func() {

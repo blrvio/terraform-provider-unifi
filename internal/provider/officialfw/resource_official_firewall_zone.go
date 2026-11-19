@@ -2,6 +2,7 @@ package officialfw
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -12,6 +13,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
@@ -29,8 +33,32 @@ var (
 
 type officialFirewallZoneModel struct {
 	base.Model
-	Name       types.String `tfsdk:"name"`
-	NetworkIDs types.List   `tfsdk:"network_ids"`
+	Name         types.String `tfsdk:"name"`
+	NetworkIDs   types.List   `tfsdk:"network_ids"`
+	Origin       types.String `tfsdk:"origin"`
+	Configurable types.Bool   `tfsdk:"configurable"`
+}
+
+const zoneOriginSystemDefined = "SYSTEM_DEFINED"
+
+// zoneConfigurable reads the metadata "configurable" flag the controller returns for
+// system zones (not in the 11.0.99 spec; kept in the metadata union). User zones are
+// always configurable; a system zone without the flag reports null.
+func zoneConfigurable(meta official.UserOrSystemDefinedEntityMetadata) types.Bool {
+	if meta.Origin != zoneOriginSystemDefined {
+		return types.BoolValue(true)
+	}
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		return types.BoolNull()
+	}
+	var m struct {
+		Configurable *bool `json:"configurable"`
+	}
+	if json.Unmarshal(raw, &m) != nil || m.Configurable == nil {
+		return types.BoolNull()
+	}
+	return types.BoolValue(*m.Configurable)
 }
 
 // stringsToUUIDs parses a slice of string UUIDs into []uuid.UUID, reporting the
@@ -101,6 +129,8 @@ func (m *officialFirewallZoneModel) Merge(ctx context.Context, other interface{}
 
 	m.SetID(zone.Id.String())
 	m.Name = types.StringValue(zone.Name)
+	m.Origin = types.StringValue(zone.Metadata.Origin)
+	m.Configurable = zoneConfigurable(zone.Metadata)
 
 	list, listDiags := types.ListValueFrom(ctx, types.StringType, uuidsToStrings(zone.NetworkIds))
 	diags.Append(listDiags...)
@@ -130,7 +160,10 @@ func NewOfficialFirewallZoneResource() resource.Resource {
 func (r *officialFirewallZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a firewall zone via the UniFi **Official API** (`integration/v1`). " +
-			"Requires a controller running version 10.1.78 or later with API-key authentication.",
+			"Requires a controller running version 10.1.78 or later with API-key authentication.\n\n" +
+			"The built-in zones (`origin = \"SYSTEM_DEFINED\"`: Internal, External, Gateway, Vpn, Hotspot, Dmz) can be imported. " +
+			"Their name cannot change and they cannot be destroyed; only the networks of a zone with `configurable = true` " +
+			"can be edited. The plan fails early for any other change; to stop managing a system zone use a `removed` block.",
 		Attributes: map[string]schema.Attribute{
 			"id":   ut.ID(),
 			"site": ut.SiteAttribute(),
@@ -143,12 +176,27 @@ func (r *officialFirewallZoneResource) Schema(_ context.Context, _ resource.Sche
 				Required:            true,
 				ElementType:         types.StringType,
 			},
+			"origin": schema.StringAttribute{
+				MarkdownDescription: "Who defined the zone: `USER_DEFINED` or `SYSTEM_DEFINED`.",
+				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"configurable": schema.BoolAttribute{
+				MarkdownDescription: "Whether the zone's networks can be changed. Always true for user zones; false for the " +
+					"External, Gateway and Vpn system zones.",
+				Computed:      true,
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
 
-func (r *officialFirewallZoneResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	// Destroy plans carry a null plan; nothing to validate.
+func (r *officialFirewallZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	resp.Diagnostics.Append(checkSystemZoneChange(ctx, req)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	// Destroy plans carry a null plan; nothing else to validate.
 	if req.Plan.Raw.IsNull() {
 		return
 	}
@@ -294,4 +342,38 @@ func (r *officialFirewallZoneResource) ImportState(ctx context.Context, req reso
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
+}
+
+// checkSystemZoneChange fails the plan for the changes the controller refuses on a
+// system zone: destroy, rename, or new networks on a non-configurable zone.
+func checkSystemZoneChange(ctx context.Context, req resource.ModifyPlanRequest) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if req.State.Raw.IsNull() {
+		return diags
+	}
+	var state officialFirewallZoneModel
+	diags.Append(req.State.Get(ctx, &state)...)
+	if diags.HasError() || state.Origin.ValueString() != zoneOriginSystemDefined {
+		return diags
+	}
+	if req.Plan.Raw.IsNull() {
+		diags.AddError("System firewall zone cannot be destroyed",
+			fmt.Sprintf("Zone %q is defined by the controller. Stop managing it with a `removed { from = ... lifecycle { destroy = false } }` "+
+				"block instead of deleting it.", state.Name.ValueString()))
+		return diags
+	}
+	var plan officialFirewallZoneModel
+	diags.Append(req.Plan.Get(ctx, &plan)...)
+	if diags.HasError() {
+		return diags
+	}
+	if !plan.Name.IsUnknown() && plan.Name.ValueString() != state.Name.ValueString() {
+		diags.AddAttributeError(path.Root("name"), "System firewall zone cannot be renamed",
+			fmt.Sprintf("Zone %q is defined by the controller and keeps its name.", state.Name.ValueString()))
+	}
+	if !state.Configurable.IsNull() && !state.Configurable.ValueBool() && !plan.NetworkIDs.IsUnknown() && !plan.NetworkIDs.Equal(state.NetworkIDs) {
+		diags.AddAttributeError(path.Root("network_ids"), "System firewall zone is not configurable",
+			fmt.Sprintf("The controller manages the networks of zone %q (configurable = false).", state.Name.ValueString()))
+	}
+	return diags
 }

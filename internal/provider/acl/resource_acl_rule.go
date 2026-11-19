@@ -48,9 +48,9 @@ type aclRuleModel struct {
 	Type                  types.String `tfsdk:"type"`
 	Enabled               types.Bool   `tfsdk:"enabled"`
 	Description           types.String `tfsdk:"description"`
-	SourceFilter          types.String `tfsdk:"source_filter"`
-	DestinationFilter     types.String `tfsdk:"destination_filter"`
-	EnforcingDeviceFilter types.String `tfsdk:"enforcing_device_filter"`
+	SourceFilter          ut.JSONValue `tfsdk:"source_filter"`
+	DestinationFilter     ut.JSONValue `tfsdk:"destination_filter"`
+	EnforcingDeviceFilter ut.JSONValue `tfsdk:"enforcing_device_filter"`
 	Index                 types.Int32  `tfsdk:"index"`
 }
 
@@ -79,7 +79,7 @@ func (m *aclRuleModel) enabledValue() bool {
 // filterFromJSON decodes an Optional JSON-string attribute into a free-form
 // value for the polymorphic source/destination filters. An unset or empty
 // string yields a nil filter (attribute omitted from the request).
-func filterFromJSON(v types.String) (interface{}, error) {
+func filterFromJSON(v ut.JSONValue) (interface{}, error) {
 	if v.IsNull() || v.IsUnknown() {
 		return nil, nil
 	}
@@ -96,7 +96,7 @@ func filterFromJSON(v types.String) (interface{}, error) {
 
 // deviceFilterFromJSON decodes the Optional enforcing_device_filter JSON string
 // into the concrete Official-API union type.
-func deviceFilterFromJSON(v types.String) (*official.ACLRuleDeviceFilter, error) {
+func deviceFilterFromJSON(v ut.JSONValue) (*official.ACLRuleDeviceFilter, error) {
 	if v.IsNull() || v.IsUnknown() {
 		return nil, nil
 	}
@@ -113,15 +113,19 @@ func deviceFilterFromJSON(v types.String) (*official.ACLRuleDeviceFilter, error)
 
 // filterToJSON marshals a returned polymorphic filter back to a compact JSON
 // string, or null when the controller returned no filter.
-func filterToJSON(v interface{}) (types.String, error) {
+func filterToJSON(v interface{}) (ut.JSONValue, error) {
 	if v == nil {
-		return types.StringNull(), nil
+		return ut.JSONNull(), nil
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
-		return types.StringNull(), err
+		return ut.JSONNull(), err
 	}
-	return types.StringValue(string(raw)), nil
+	canonical, err := ut.CanonicalJSON(raw)
+	if err != nil {
+		return ut.JSONNull(), err
+	}
+	return ut.JSONStringValue(canonical), nil
 }
 
 // AsUnifiModel builds the Official-API create/update body. ACLRuleUpdate uses a
@@ -213,7 +217,7 @@ func (m *aclRuleModel) Merge(_ context.Context, other interface{}) diag.Diagnost
 		}
 		m.EnforcingDeviceFilter = dev
 	} else {
-		m.EnforcingDeviceFilter = types.StringNull()
+		m.EnforcingDeviceFilter = ut.JSONNull()
 	}
 
 	return diags
@@ -275,18 +279,21 @@ func (r *aclRuleResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				Optional:            true,
 			},
 			"source_filter": schema.StringAttribute{
+				CustomType: ut.JSONType{},
 				MarkdownDescription: "Traffic source filter, encoded as a JSON string. The nested shape is " +
 					"polymorphic and depends on `type`; supply it verbatim (e.g. with `jsonencode(...)`). Must be " +
 					"valid JSON. The controller normalizes the value, so use a compact JSON encoding to avoid drift.",
 				Optional: true,
 			},
 			"destination_filter": schema.StringAttribute{
+				CustomType: ut.JSONType{},
 				MarkdownDescription: "Traffic destination filter, encoded as a JSON string. The nested shape is " +
 					"polymorphic and depends on `type`; supply it verbatim (e.g. with `jsonencode(...)`). Must be " +
 					"valid JSON. The controller normalizes the value, so use a compact JSON encoding to avoid drift.",
 				Optional: true,
 			},
 			"enforcing_device_filter": schema.StringAttribute{
+				CustomType: ut.JSONType{},
 				MarkdownDescription: "Filter selecting the devices that enforce this rule, encoded as a JSON " +
 					"string (e.g. with `jsonencode(...)`). Must be valid JSON. The controller normalizes the value, " +
 					"so use a compact JSON encoding to avoid drift.",

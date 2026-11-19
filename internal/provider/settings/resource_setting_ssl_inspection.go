@@ -79,6 +79,7 @@ func NewSslInspectionResource() resource.Resource {
 	r := &sslInspectionResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_ssl_inspection",
+		unifi.SettingSslInspectionKey,
 		func() *sslInspectionModel { return &sslInspectionModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSslInspection(ctx, site)

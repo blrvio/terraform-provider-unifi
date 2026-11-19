@@ -118,6 +118,7 @@ func NewSnmpResource() resource.Resource {
 	r := &snmpResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_snmp",
+		unifi.SettingSnmpKey,
 		func() *snmpModel { return &snmpModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSnmp(ctx, site)

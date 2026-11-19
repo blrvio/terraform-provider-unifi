@@ -78,6 +78,7 @@ func NewPortaResource() resource.Resource {
 	r := &portaResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_porta",
+		unifi.SettingPortaKey,
 		func() *portaModel { return &portaModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingPorta(ctx, site)

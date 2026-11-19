@@ -242,6 +242,7 @@ func NewNetflowResource() resource.Resource {
 	r := &netflowResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_netflow",
+		unifi.SettingNetflowKey,
 		func() *netflowModel { return &netflowModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingNetflow(ctx, site)

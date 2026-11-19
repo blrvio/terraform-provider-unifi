@@ -71,6 +71,13 @@ func (d *ntpModel) Merge(_ context.Context, other interface{}) diag.Diagnostics 
 	d.ID = types.StringValue(model.ID)
 	d.Mode = types.StringValue(model.SettingPreference)
 
+	// In auto mode the controller keeps the last manual servers, but they are not in
+	// use and the schema rejects them with mode = "auto"; report them as null.
+	if model.SettingPreference == "auto" {
+		d.NtpServer1, d.NtpServer2, d.NtpServer3, d.NtpServer4 = types.StringNull(), types.StringNull(), types.StringNull(), types.StringNull()
+		return diags
+	}
+
 	if model.NtpServer1 != "" {
 		d.NtpServer1 = types.StringValue(model.NtpServer1)
 	}
@@ -111,7 +118,7 @@ func (r *ntpResource) ConfigValidators(_ context.Context) []resource.ConfigValid
 func (r *ntpResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	serverValidators := func() []validator.String {
 		return []validator.String{
-			stringvalidator.Any(validators.Hostname(), validators.IPv4()),
+			stringvalidator.Any(validators.HostLabelOrFQDN(), validators.IPv4()),
 		}
 	}
 	resp.Schema = schema.Schema{
@@ -169,6 +176,7 @@ func NewNtpResource() resource.Resource {
 	r := &ntpResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_ntp",
+		unifi.SettingNtpKey,
 		func() *ntpModel { return &ntpModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingNtp(ctx, site)

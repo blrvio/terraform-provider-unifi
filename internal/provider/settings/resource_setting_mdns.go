@@ -214,6 +214,7 @@ func NewMdnsResource() resource.Resource {
 	r := &mdnsResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_mdns",
+		unifi.SettingMdnsKey,
 		func() *mdnsModel { return &mdnsModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingMdns(ctx, site)

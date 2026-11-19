@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
 )
 
 // asBody runs a model through AsUnifiModel and returns the concrete body.
@@ -28,7 +30,7 @@ func TestACLRuleAsUnifiModel_SourceFilterRoundTrip(t *testing.T) {
 		Name:         types.StringValue("block-guests"),
 		Action:       types.StringValue(aclRuleActionBlock),
 		Type:         types.StringValue(aclRuleTypeIPv4),
-		SourceFilter: types.StringValue(`{"type":"NETWORK","networkId":"abc"}`),
+		SourceFilter: ut.JSONStringValue(`{"type":"NETWORK","networkId":"abc"}`),
 		// Enabled left null -> should default to true.
 	}
 	body := asBody(t, m)
@@ -71,7 +73,7 @@ func TestACLRuleAsUnifiModel_InvalidJSON(t *testing.T) {
 		Name:         types.StringValue("bad"),
 		Action:       types.StringValue(aclRuleActionBlock),
 		Type:         types.StringValue(aclRuleTypeIPv4),
-		SourceFilter: types.StringValue(`{not json`),
+		SourceFilter: ut.JSONStringValue(`{not json`),
 	}
 	_, diags := m.AsUnifiModel(context.Background())
 	assert.True(t, diags.HasError())

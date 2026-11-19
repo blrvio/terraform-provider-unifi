@@ -55,6 +55,7 @@ func NewCountryResource() resource.Resource {
 	r := &countryResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_country",
+		unifi.SettingCountryKey,
 		func() *countryModel { return &countryModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingCountry(ctx, site)

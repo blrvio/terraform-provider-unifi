@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -22,56 +23,57 @@ import (
 )
 
 var (
-	_ resource.Resource                = &officialFirewallPolicyOrderResource{}
-	_ resource.ResourceWithConfigure   = &officialFirewallPolicyOrderResource{}
-	_ resource.ResourceWithImportState = &officialFirewallPolicyOrderResource{}
-	_ resource.ResourceWithModifyPlan  = &officialFirewallPolicyOrderResource{}
-	_ base.ResourceModel               = &officialFirewallPolicyOrderModel{}
-	_ base.Resource                    = &officialFirewallPolicyOrderResource{}
+	_ resource.Resource                 = &officialFirewallPolicyOrderResource{}
+	_ resource.ResourceWithConfigure    = &officialFirewallPolicyOrderResource{}
+	_ resource.ResourceWithImportState  = &officialFirewallPolicyOrderResource{}
+	_ resource.ResourceWithModifyPlan   = &officialFirewallPolicyOrderResource{}
+	_ resource.ResourceWithUpgradeState = &officialFirewallPolicyOrderResource{}
+	_ base.ResourceModel                = &officialFirewallPolicyOrderModel{}
+	_ base.Resource                     = &officialFirewallPolicyOrderResource{}
 )
 
 type officialFirewallPolicyOrderModel struct {
 	base.Model
 	SourceZoneID      types.String `tfsdk:"source_zone_id"`
 	DestinationZoneID types.String `tfsdk:"destination_zone_id"`
-	PolicyIDs         types.List   `tfsdk:"policy_ids"`
+	BeforeSystemIDs   types.List   `tfsdk:"before_system_defined_policy_ids"`
+	AfterSystemIDs    types.List   `tfsdk:"after_system_defined_policy_ids"`
 }
 
-// orderingFromStrings converts an ordered list of policy-ID strings into the
-// Official-API ordering body. The managed order is applied to the user-defined
-// policies evaluated after the system-defined ones (AfterSystemDefined).
-func orderingFromStrings(in []string) (official.OrderedFirewallPolicyIDs, diag.Diagnostics) {
-	ids, diags := stringsToUUIDs(in)
-	if diags.HasError() {
-		return official.OrderedFirewallPolicyIDs{}, diags
+// orderedIDs parses one of the two ordered lists. A null/unknown list becomes an
+// empty, non-nil slice: the Official API rejects (or misreads) a null list.
+func orderedIDs(ctx context.Context, l types.List) ([]uuid.UUID, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	var in []string
+	if ut.IsDefined(l) {
+		diags.Append(ut.ListElementsAs(ctx, l, &in)...)
+		if diags.HasError() {
+			return nil, diags
+		}
 	}
-	return official.OrderedFirewallPolicyIDs{AfterSystemDefined: ids}, diags
+	ids, convDiags := stringsToUUIDs(in)
+	diags.Append(convDiags...)
+	return ids, diags
 }
 
-// stringsFromOrdering renders the AfterSystemDefined policy IDs of an ordering
-// as their canonical string form.
-func stringsFromOrdering(o official.OrderedFirewallPolicyIDs) []string {
-	return uuidsToStrings(o.AfterSystemDefined)
-}
-
-// AsUnifiModel builds the Official-API ordering body from the configured policy
-// IDs. Source/destination zones travel as query parameters, not in the body.
+// AsUnifiModel builds the Official-API ordering body from both configured lists.
+// Source/destination zones travel as query parameters, not in the body.
 func (m *officialFirewallPolicyOrderModel) AsUnifiModel(ctx context.Context) (interface{}, diag.Diagnostics) {
 	var diags diag.Diagnostics
-	var policyStrings []string
-	diags.Append(ut.ListElementsAs(ctx, m.PolicyIDs, &policyStrings)...)
+	before, d := orderedIDs(ctx, m.BeforeSystemIDs)
+	diags.Append(d...)
+	after, d := orderedIDs(ctx, m.AfterSystemIDs)
+	diags.Append(d...)
 	if diags.HasError() {
 		return nil, diags
 	}
-	ordered, convDiags := orderingFromStrings(policyStrings)
-	diags.Append(convDiags...)
-	if diags.HasError() {
-		return nil, diags
-	}
-	return &official.FirewallPolicyOrdering{OrderedFirewallPolicyIds: ordered}, diags
+	return &official.FirewallPolicyOrdering{OrderedFirewallPolicyIds: official.OrderedFirewallPolicyIDs{
+		BeforeSystemDefined: before,
+		AfterSystemDefined:  after,
+	}}, diags
 }
 
-// Merge populates the model's policy_ids from an Official-API ordering response.
+// Merge populates both ordered lists from an Official-API ordering response.
 func (m *officialFirewallPolicyOrderModel) Merge(ctx context.Context, other interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	ordering, ok := other.(*official.FirewallPolicyOrdering)
@@ -79,12 +81,16 @@ func (m *officialFirewallPolicyOrderModel) Merge(ctx context.Context, other inte
 		diags.AddError("Invalid model type", fmt.Sprintf("Expected *official.FirewallPolicyOrdering, got %T", other))
 		return diags
 	}
-	list, listDiags := types.ListValueFrom(ctx, types.StringType, stringsFromOrdering(ordering.OrderedFirewallPolicyIds))
-	diags.Append(listDiags...)
+	o := ordering.OrderedFirewallPolicyIds
+	before, d := types.ListValueFrom(ctx, types.StringType, uuidsToStrings(o.BeforeSystemDefined))
+	diags.Append(d...)
+	after, d := types.ListValueFrom(ctx, types.StringType, uuidsToStrings(o.AfterSystemDefined))
+	diags.Append(d...)
 	if diags.HasError() {
 		return diags
 	}
-	m.PolicyIDs = list
+	m.BeforeSystemIDs = before
+	m.AfterSystemIDs = after
 	return diags
 }
 
@@ -118,10 +124,15 @@ func NewOfficialFirewallPolicyOrderResource() resource.Resource {
 
 func (r *officialFirewallPolicyOrderResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages the evaluation order of firewall policies for a source/destination zone pair " +
-			"via the UniFi **Official API** (`integration/v1`). Requires a controller running version 10.1.78 or later " +
-			"with API-key authentication. The order applies to user-defined policies evaluated after the " +
-			"system-defined policies.",
+		MarkdownDescription: "Manages the evaluation order of the user-defined firewall policies of a " +
+			"source/destination zone pair via the UniFi **Official API** (`integration/v1`). Requires a controller " +
+			"running version 10.1.78 or later with API-key authentication.\n\n" +
+			"The controller keeps two ordered lists per zone pair: user-defined policies evaluated **before** the " +
+			"system-defined (predefined) policies, and those evaluated **after** them. This resource owns both lists " +
+			"of the pair: every user-defined policy of the pair must appear in exactly one of them, and a policy " +
+			"created outside Terraform shows up as drift. Destroying the resource only removes it from state; the " +
+			"order on the controller is left as is.",
+		Version: 1,
 		Attributes: map[string]schema.Attribute{
 			"id":   ut.ID("The identifier of this ordering, in the form `<source_zone_id>:<destination_zone_id>`."),
 			"site": ut.SiteAttribute(),
@@ -139,10 +150,21 @@ func (r *officialFirewallPolicyOrderResource) Schema(_ context.Context, _ resour
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"policy_ids": schema.ListAttribute{
-				MarkdownDescription: "Ordered list of firewall policy UUIDs for the zone pair.",
-				Required:            true,
-				ElementType:         types.StringType,
+			"before_system_defined_policy_ids": schema.ListAttribute{
+				MarkdownDescription: "Ordered UUIDs of the user-defined policies evaluated **before** the system-defined policies " +
+					"(the UniFi UI default for new policies). Defaults to an empty list.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				Default:     listdefault.StaticValue(ut.EmptyList(types.StringType)),
+			},
+			"after_system_defined_policy_ids": schema.ListAttribute{
+				MarkdownDescription: "Ordered UUIDs of the user-defined policies evaluated **after** the system-defined policies. " +
+					"Defaults to an empty list. Replaces the former `policy_ids` attribute.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				Default:     listdefault.StaticValue(ut.EmptyList(types.StringType)),
 			},
 		},
 	}
@@ -182,12 +204,12 @@ func (r *officialFirewallPolicyOrderResource) upsert(ctx context.Context, plan *
 	}
 	sourceZone := plan.SourceZoneID.ValueString()
 	destZone := plan.DestinationZoneID.ValueString()
-	updated, err := client.Official().Firewall().UpdatePolicyOrdering(ctx, siteID, sourceZone, destZone, *orderingBody)
-	if err != nil {
+	// The PUT echo is not merged back: the planned lists are what was applied, and the
+	// next Read reports any controller-side difference as drift instead of an apply error.
+	if _, err := client.Official().Firewall().UpdatePolicyOrdering(ctx, siteID, sourceZone, destZone, *orderingBody); err != nil {
 		diags.Append(base.OfficialAPIErrorDiagnostics("Error updating firewall policy ordering", err)...)
 		return
 	}
-	diags.Append(plan.Merge(ctx, updated)...)
 	plan.SetID(orderingID(sourceZone, destZone))
 	plan.SetSite(siteName)
 }
@@ -290,4 +312,52 @@ func (r *officialFirewallPolicyOrderResource) ImportState(ctx context.Context, r
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("site"), site)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("source_zone_id"), sourceZone)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("destination_zone_id"), destZone)...)
+}
+
+// UpgradeState moves the v0 `policy_ids` (which the provider always sent as the
+// after-system-defined list) into `after_system_defined_policy_ids`.
+func (r *officialFirewallPolicyOrderResource) UpgradeState(_ context.Context) map[int64]resource.StateUpgrader {
+	return map[int64]resource.StateUpgrader{
+		0: {
+			PriorSchema: &schema.Schema{
+				Attributes: map[string]schema.Attribute{
+					"id":                  schema.StringAttribute{Computed: true},
+					"site":                schema.StringAttribute{Optional: true, Computed: true},
+					"source_zone_id":      schema.StringAttribute{Required: true},
+					"destination_zone_id": schema.StringAttribute{Required: true},
+					"policy_ids":          schema.ListAttribute{Required: true, ElementType: types.StringType},
+				},
+			},
+			StateUpgrader: upgradePolicyOrderV0,
+		},
+	}
+}
+
+type policyOrderModelV0 struct {
+	ID                types.String `tfsdk:"id"`
+	Site              types.String `tfsdk:"site"`
+	SourceZoneID      types.String `tfsdk:"source_zone_id"`
+	DestinationZoneID types.String `tfsdk:"destination_zone_id"`
+	PolicyIDs         types.List   `tfsdk:"policy_ids"`
+}
+
+func upgradePolicyOrderV0(ctx context.Context, req resource.UpgradeStateRequest, resp *resource.UpgradeStateResponse) {
+	var prior policyOrderModelV0
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	after := prior.PolicyIDs
+	if !ut.IsDefined(after) {
+		after = ut.EmptyList(types.StringType)
+	}
+	upgraded := officialFirewallPolicyOrderModel{
+		SourceZoneID:      prior.SourceZoneID,
+		DestinationZoneID: prior.DestinationZoneID,
+		BeforeSystemIDs:   ut.EmptyList(types.StringType),
+		AfterSystemIDs:    after,
+	}
+	upgraded.ID = prior.ID
+	upgraded.Site = prior.Site
+	resp.Diagnostics.Append(resp.State.Set(ctx, &upgraded)...)
 }

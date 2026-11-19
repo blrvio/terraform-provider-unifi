@@ -230,6 +230,7 @@ func NewEtherLightingResource() resource.Resource {
 	r := &etherLightingResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_ether_lighting",
+		unifi.SettingEtherLightingKey,
 		func() *etherLightingModel { return &etherLightingModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingEtherLighting(ctx, site)

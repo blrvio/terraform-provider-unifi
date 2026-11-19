@@ -530,6 +530,7 @@ func NewSuperMgmtResource() resource.Resource {
 	r := &superMgmtResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_super_mgmt",
+		unifi.SettingSuperMgmtKey,
 		func() *superMgmtModel { return &superMgmtModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSuperMgmt(ctx, site)

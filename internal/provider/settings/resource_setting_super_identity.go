@@ -78,7 +78,7 @@ func (r *superIdentityResource) Schema(_ context.Context, _ resource.SchemaReque
 				Optional:            true,
 				Computed:            true,
 				Validators: []validator.String{
-					validators.Hostname(),
+					validators.HostLabelOrFQDN(),
 				},
 			},
 			"name": schema.StringAttribute{
@@ -95,6 +95,7 @@ func NewSuperIdentityResource() resource.Resource {
 	r := &superIdentityResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_super_identity",
+		unifi.SettingSuperIdentityKey,
 		func() *superIdentityModel { return &superIdentityModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSuperIdentity(ctx, site)

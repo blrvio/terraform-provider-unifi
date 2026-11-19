@@ -127,6 +127,7 @@ func NewSuperSdnResource() resource.Resource {
 	r := &superSdnResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_super_sdn",
+		unifi.SettingSuperSdnKey,
 		func() *superSdnModel { return &superSdnModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSuperSdn(ctx, site)

@@ -88,6 +88,7 @@ func NewSuperMailResource() resource.Resource {
 	r := &superMailResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_super_mail",
+		unifi.SettingSuperMailKey,
 		func() *superMailModel { return &superMailModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSuperMail(ctx, site)

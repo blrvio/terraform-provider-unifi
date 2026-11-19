@@ -27,7 +27,7 @@ func macSet(t *testing.T, values ...string) types.Set {
 	return set
 }
 
-func scheduleObject(t *testing.T, sm scheduleModel) types.Object {
+func scheduleObject(t *testing.T, sm ut.ScheduleModel) types.Object {
 	t.Helper()
 	obj, diags := types.ObjectValueFrom(context.Background(), sm.AttributeTypes(), sm)
 	require.False(t, diags.HasError(), "ObjectValueFrom diagnostics: %v", diags)
@@ -46,7 +46,7 @@ func TestContentFilteringModel_AsUnifiModel(t *testing.T) {
 		ClientMACs: macSet(t, "AA:BB:CC:DD:EE:FF"),
 		NetworkIDs: strSet(t, "net-1"),
 		SafeSearch: strSet(t, "GOOGLE"),
-		Schedule: scheduleObject(t, scheduleModel{
+		Schedule: scheduleObject(t, ut.ScheduleModel{
 			Mode:           types.StringValue("EVERY_WEEK"),
 			Date:           types.StringNull(),
 			DateStart:      types.StringNull(),
@@ -110,7 +110,7 @@ func TestContentFilteringModel_Merge(t *testing.T) {
 	assert.True(t, d.Enabled.ValueBool())
 	assert.False(t, d.Schedule.IsNull())
 
-	var sm scheduleModel
+	var sm ut.ScheduleModel
 	d.Schedule.As(context.Background(), &sm, basetypes.ObjectAsOptions{})
 	assert.Equal(t, "EVERY_WEEK", sm.Mode.ValueString())
 	assert.Equal(t, "08:00", sm.TimeRangeStart.ValueString())

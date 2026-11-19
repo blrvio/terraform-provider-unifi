@@ -134,6 +134,7 @@ func NewBroadcastResource() resource.Resource {
 	r := &broadcastResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_broadcast",
+		unifi.SettingBroadcastKey,
 		func() *broadcastModel { return &broadcastModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingBroadcast(ctx, site)

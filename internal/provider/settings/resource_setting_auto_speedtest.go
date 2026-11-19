@@ -60,6 +60,7 @@ func NewAutoSpeedtestResource() resource.Resource {
 	r := &autoSpeedtestResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_auto_speedtest",
+		unifi.SettingAutoSpeedtestKey,
 		func() *autoSpeedtestModel { return &autoSpeedtestModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			res, err := client.GetSettingAutoSpeedtest(ctx, site)
@@ -76,6 +77,7 @@ func NewAutoSpeedtestResource() resource.Resource {
 			}
 			return res, nil
 		},
+		WithWriteErrorMapper(checkAutoSpeedtestUnsupportedError),
 	)
 	return r
 }

@@ -81,6 +81,7 @@ func NewDpiResource() resource.Resource {
 	r := &dpiResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_dpi",
+		unifi.SettingDpiKey,
 		func() *dpiModel { return &dpiModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingDpi(ctx, site)

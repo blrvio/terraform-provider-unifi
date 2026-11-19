@@ -67,10 +67,11 @@ func ResourceRadiusProfile() *schema.Resource {
 				Optional:    true,
 			},
 			"interim_update_interval": {
-				Description: "The interval (in seconds) between interim updates when `interim_update_enabled` is true. Default is 3600 seconds (1 hour).",
-				Type:        schema.TypeInt,
-				Default:     3600,
-				Optional:    true,
+				Description: "The interval (in seconds) between interim updates when `interim_update_enabled` is true. Default is 3600 seconds (1 hour). " +
+					"A profile that stores no interval (such as the built-in `Default`) reads as the default.",
+				Type:     schema.TypeInt,
+				Default:  3600,
+				Optional: true,
 			},
 			"use_usg_acct_server": {
 				Description: "Use the controller as a RADIUS accounting server. This allows local accounting without an external RADIUS server.",
@@ -98,7 +99,7 @@ func ResourceRadiusProfile() *schema.Resource {
 				Type:         schema.TypeString,
 				Default:      "",
 				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"disabled", "optional", "required"}, false),
+				ValidateFunc: validation.StringInSlice([]string{"", "disabled", "optional", "required"}, false),
 			},
 			"auth_server": {
 				Description: "List of RADIUS authentication servers to use with this profile. Multiple servers provide failover - if the first " +
@@ -111,10 +112,11 @@ func ResourceRadiusProfile() *schema.Resource {
 					Schema: map[string]*schema.Schema{
 						"ip": {
 							Description: "The IPv4 address of the RADIUS authentication server (e.g., '192.168.1.100'). Must be reachable from " +
-								"your UniFi network.",
+								"your UniFi network. Leave unset when the gateway itself is the server (`use_usg_auth_server`), as in " +
+								"the built-in `Default` profile.",
 							Type:         schema.TypeString,
-							Required:     true,
-							ValidateFunc: validation.IsIPAddress,
+							Optional:     true,
+							ValidateFunc: validation.Any(validation.StringIsEmpty, validation.IsIPAddress),
 						},
 						"port": {
 							Description: "The UDP port number where the RADIUS authentication service is listening. The standard port is 1812, " +
@@ -146,10 +148,11 @@ func ResourceRadiusProfile() *schema.Resource {
 					Schema: map[string]*schema.Schema{
 						"ip": {
 							Description: "The IPv4 address of the RADIUS accounting server (e.g., '192.168.1.100'). Must be reachable from " +
-								"your UniFi network.",
+								"your UniFi network. Leave unset when the gateway itself is the server (`use_usg_acct_server`), as in " +
+								"the built-in `Default` profile.",
 							Type:         schema.TypeString,
-							Required:     true,
-							ValidateFunc: validation.IsIPAddress,
+							Optional:     true,
+							ValidateFunc: validation.Any(validation.StringIsEmpty, validation.IsIPAddress),
 						},
 						"port": {
 							Description: "The UDP port number where the RADIUS accounting service is listening. The standard port is 1813, " +
@@ -274,6 +277,26 @@ func resourceRadiusProfileCreate(ctx context.Context, d *schema.ResourceData, me
 	return resourceRadiusProfileSetResourceData(resp, d, site)
 }
 
+const defaultInterimUpdateInterval = 3600
+
+// overlayManagedRadiusProfile copies the schema-managed fields of src onto a copy of
+// current, keeping the system attributes (attr_hidden_id, attr_no_delete...), TLS
+// settings and certificates the schema does not model.
+func overlayManagedRadiusProfile(current, src *unifi.RADIUSProfile) *unifi.RADIUSProfile {
+	n := *current
+	n.Name = src.Name
+	n.InterimUpdateEnabled = src.InterimUpdateEnabled
+	n.InterimUpdateInterval = utils.KeepUnset(current.InterimUpdateInterval, src.InterimUpdateInterval, defaultInterimUpdateInterval)
+	n.AccountingEnabled = src.AccountingEnabled
+	n.UseUsgAcctServer = src.UseUsgAcctServer
+	n.UseUsgAuthServer = src.UseUsgAuthServer
+	n.VLANEnabled = src.VLANEnabled
+	n.VLANWLANMode = src.VLANWLANMode
+	n.AuthServers = src.AuthServers
+	n.AcctServers = src.AcctServers
+	return &n
+}
+
 func resourceRadiusProfileGetResourceData(d *schema.ResourceData) (*unifi.RADIUSProfile, error) {
 	authServerData, _ := d.Get("auth_server").([]interface{})
 	authServers, err := setToAuthServers(authServerData)
@@ -321,7 +344,7 @@ func resourceRadiusProfileSetResourceData(resp *unifi.RADIUSProfile, d *schema.R
 	if err := d.Set("interim_update_enabled", resp.InterimUpdateEnabled); err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("interim_update_interval", resp.InterimUpdateInterval); err != nil {
+	if err := d.Set("interim_update_interval", utils.OrDefault(resp.InterimUpdateInterval, defaultInterimUpdateInterval)); err != nil {
 		return diag.FromErr(err)
 	}
 	if err := d.Set("accounting_enabled", resp.AccountingEnabled); err != nil {
@@ -378,18 +401,30 @@ func resourceRadiusProfileUpdate(ctx context.Context, d *schema.ResourceData, me
 		return diag.Errorf("unexpected meta type: %T", meta)
 	}
 
-	req, err := resourceRadiusProfileGetResourceData(d)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	req.ID = d.Id()
-
 	site, _ := d.Get("site").(string)
 	if site == "" {
 		site = c.Site
 	}
-	req.SiteID = site
+
+	// Read-modify-write: the radiusprofile PUT replaces the object.
+	current, err := c.GetRADIUSProfile(ctx, site, d.Id())
+	if errors.Is(err, unifi.ErrNotFound) {
+		d.SetId("")
+		return nil
+	}
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	managed, err := resourceRadiusProfileGetResourceData(d)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	req := overlayManagedRadiusProfile(current, managed)
+	req.ID = d.Id()
+	if req.SiteID == "" {
+		req.SiteID = site
+	}
 
 	// go-unifi v1.9.2's updateRADIUSProfile converts a successful-but-empty PUT
 	// response into unifi.ErrNotFound (see utils.ReReadOnUpdateNotFound / issue #98);
@@ -422,8 +457,19 @@ func resourceRadiusProfileDelete(ctx context.Context, d *schema.ResourceData, me
 		site = c.Site
 	}
 
-	err := c.DeleteRADIUSProfile(ctx, site, id)
-	return diag.FromErr(err)
+	current, err := c.GetRADIUSProfile(ctx, site, id)
+	if errors.Is(err, unifi.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if current.NoDelete {
+		return diag.Errorf("RADIUS profile %q is a system profile the controller does not allow to delete; "+
+			"remove it from the configuration with a `removed { from = ... lifecycle { destroy = false } }` block instead", current.Name)
+	}
+
+	return diag.FromErr(c.DeleteRADIUSProfile(ctx, site, id))
 }
 
 func importRadiusProfile(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {

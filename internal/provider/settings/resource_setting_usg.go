@@ -355,6 +355,13 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	// and report the enabled flag as false. Region Blocking is managed by the
 	// unifi_setting_usg_geo resource on UDM-Pro / Network 10.x.
 	d.GeoIPFilteringEnabled = types.BoolValue(false)
+	// On import the model starts from its Go zero value, an object with no attribute
+	// types, which the framework rejects ("Value Conversion Error"); use a typed null.
+	if d.GeoIPFiltering.IsNull() {
+		geoNull, geoDiags := ut.ObjectNull(&GeoIPFilteringModel{})
+		diags.Append(geoDiags...)
+		d.GeoIPFiltering = geoNull
+	}
 
 	d.UpnpEnabled = types.BoolValue(model.UpnpEnabled)
 	// Set UPNP attributes
@@ -365,7 +372,8 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 			WANInterface:  types.StringValue(model.UpnpWANInterface),
 		}
 
-		upnpObject, diags := types.ObjectValueFrom(ctx, upnp.AttributeTypes(), upnp)
+		upnpObject, upnpDiags := types.ObjectValueFrom(ctx, upnp.AttributeTypes(), upnp)
+		diags.Append(upnpDiags...)
 		if diags.HasError() {
 			return diags
 		}
@@ -402,11 +410,12 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	d.TCPTimeouts = tcpTimeoutObj
 
 	// Convert DHCP Relay settings
+	// Unset relay values come back as ""/0, which the validators reject; report them as null.
 	dhcpRelayModel := DHCPRelayModel{
-		AgentsPackets: types.StringValue(model.DHCPRelayAgentsPackets),
-		HopCount:      types.Int64Value(int64(model.DHCPRelayHopCount)),
-		MaxSize:       types.Int64Value(int64(model.DHCPRelayMaxSize)),
-		Port:          types.Int64Value(int64(model.DHCPRelayPort)),
+		AgentsPackets: ut.StringOrNull(model.DHCPRelayAgentsPackets),
+		HopCount:      ut.Int64OrNull(model.DHCPRelayHopCount),
+		MaxSize:       ut.Int64OrNull(model.DHCPRelayMaxSize),
+		Port:          ut.Int64OrNull(model.DHCPRelayPort),
 	}
 
 	// TODO deprecated
@@ -427,7 +436,8 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	}
 
 	// Set the DHCP relay servers list
-	dhcpRelayServers, diags := types.ListValueFrom(ctx, types.StringType, dhcpRelay)
+	dhcpRelayServers, relayDiags := types.ListValueFrom(ctx, types.StringType, dhcpRelay)
+	diags.Append(relayDiags...)
 	if diags.HasError() {
 		return diags
 	}
@@ -454,7 +464,7 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	d.IcmpTimeout = types.Int64Value(int64(model.ICMPTimeout))
 	d.LldpEnableAll = types.BoolValue(model.LldpEnableAll)
 	d.MssClamp = types.StringValue(model.MssClamp)
-	d.MssClampMss = types.Int64Value(int64(model.MssClampMss))
+	d.MssClampMss = ut.Int64OrNull(model.MssClampMss) // 0 = unset (mss_clamp auto)
 	d.OffloadAccounting = types.BoolValue(model.OffloadAccounting)
 	d.OffloadL2Blocking = types.BoolValue(model.OffloadL2Blocking)
 	d.OffloadSch = types.BoolValue(model.OffloadSch)
@@ -1195,6 +1205,7 @@ func NewUsgResource() resource.Resource {
 	r := &usgResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_usg",
+		unifi.SettingUsgKey,
 		func() *usgModel { return &usgModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingUsg(ctx, site)

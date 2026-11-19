@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 
@@ -316,7 +317,11 @@ func ResourceWLAN() *schema.Resource {
 	}
 }
 
-func resourceWLANGetResourceData(d *schema.ResourceData, meta interface{}) (*unifi.WLAN, error) {
+// resourceWLANGetResourceData builds the wlanconf PUT/POST body. With current set
+// (update) it is a read-modify-write: the body starts from the controller object and
+// only the attributes the schema manages are overlaid, so fields the provider does not
+// model (and the UI-chosen WPA mode, DTIM, rekey...) are not reset on every update.
+func resourceWLANGetResourceData(d *schema.ResourceData, meta interface{}, current *unifi.WLAN) (*unifi.WLAN, error) {
 	c, ok := meta.(*base.Client)
 	if !ok {
 		return nil, fmt.Errorf("unexpected meta type: %T", meta)
@@ -447,7 +452,7 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta interface{}) (*uni
 		bcFilterList = nil
 	}
 
-	return &unifi.WLAN{
+	w := &unifi.WLAN{
 		Name:                    name,
 		XPassphrase:             passphrase,
 		HideSSID:                hideSSID,
@@ -497,7 +502,55 @@ func resourceWLANGetResourceData(d *schema.ResourceData, meta interface{}) (*uni
 
 		BroadcastFilterEnabled: bcFilterEnabled,
 		BroadcastFilterList:    bcFilterList,
-	}, nil
+	}
+	if current == nil {
+		return w, nil
+	}
+	n := *current
+	overlayManagedWLANFields(&n, w)
+	return &n, nil
+}
+
+// overlayManagedWLANFields copies onto dst the fields the schema manages. The
+// create-time defaults (WPAEnc, WPAMode, Enabled, NameCombineEnabled, GroupRekey,
+// DTIMMode) are deliberately not copied: on update the controller's values stay.
+func overlayManagedWLANFields(dst, src *unifi.WLAN) {
+	dst.Name = src.Name
+	dst.XPassphrase = src.XPassphrase
+	dst.HideSSID = src.HideSSID
+	dst.IsGuest = src.IsGuest
+	dst.NetworkID = src.NetworkID
+	dst.ApGroupIDs = src.ApGroupIDs
+	dst.UserGroupID = src.UserGroupID
+	dst.Security = src.Security
+	dst.WPA3Support = src.WPA3Support
+	dst.WPA3Transition = src.WPA3Transition
+	dst.MulticastEnhanceEnabled = src.MulticastEnhanceEnabled
+	dst.MACFilterEnabled = src.MACFilterEnabled
+	dst.MACFilterList = src.MACFilterList
+	dst.MACFilterPolicy = src.MACFilterPolicy
+	dst.RADIUSProfileID = src.RADIUSProfileID
+	dst.ScheduleWithDuration = src.ScheduleWithDuration
+	dst.ScheduleEnabled = src.ScheduleEnabled
+	dst.WLANBand = src.WLANBand
+	dst.WLANBands = src.WLANBands
+	dst.SettingPreference = src.SettingPreference
+	dst.PMFMode = src.PMFMode
+	dst.No2GhzOui = src.No2GhzOui
+	dst.L2Isolation = src.L2Isolation
+	dst.ProxyArp = src.ProxyArp
+	dst.BssTransition = src.BssTransition
+	dst.UapsdEnabled = src.UapsdEnabled
+	dst.FastRoamingEnabled = src.FastRoamingEnabled
+	dst.MinrateSettingPreference = src.MinrateSettingPreference
+	dst.MinrateNgEnabled = src.MinrateNgEnabled
+	dst.MinrateNgDataRateKbps = src.MinrateNgDataRateKbps
+	dst.MinrateNgAdvertisingRates = src.MinrateNgAdvertisingRates
+	dst.MinrateNaEnabled = src.MinrateNaEnabled
+	dst.MinrateNaDataRateKbps = src.MinrateNaDataRateKbps
+	dst.MinrateNaAdvertisingRates = src.MinrateNaAdvertisingRates
+	dst.BroadcastFilterEnabled = src.BroadcastFilterEnabled
+	dst.BroadcastFilterList = src.BroadcastFilterList
 }
 
 func resourceWLANCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -506,7 +559,7 @@ func resourceWLANCreate(ctx context.Context, d *schema.ResourceData, meta interf
 		return diag.Errorf("unexpected meta type: %T", meta)
 	}
 
-	req, err := resourceWLANGetResourceData(d, meta)
+	req, err := resourceWLANGetResourceData(d, meta, nil)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -565,6 +618,8 @@ func resourceWLANSetResourceData(resp *unifi.WLAN, d *schema.ResourceData, site 
 		minRate5g = resp.MinrateNaDataRateKbps
 	}
 
+	wlanBand, wlanBands := wlanBandAttributes(resp, d)
+
 	for key, value := range map[string]interface{}{
 		"site":                         site,
 		"name":                         resp.Name,
@@ -581,8 +636,8 @@ func resourceWLANSetResourceData(resp *unifi.WLAN, d *schema.ResourceData, site 
 		"mac_filter_policy":            macFilterPolicy,
 		"radius_profile_id":            resp.RADIUSProfileID,
 		"schedule":                     schedule,
-		"wlan_band":                    resp.WLANBand,
-		"wlan_bands":                   utils.StringSliceToSet(resp.WLANBands),
+		"wlan_band":                    wlanBand,
+		"wlan_bands":                   wlanBands,
 		"no2ghz_oui":                   resp.No2GhzOui,
 		"l2_isolation":                 resp.L2Isolation,
 		"proxy_arp":                    resp.ProxyArp,
@@ -637,17 +692,29 @@ func resourceWLANUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 		return diag.Errorf("unexpected meta type: %T", meta)
 	}
 
-	req, err := resourceWLANGetResourceData(d, meta)
+	site, _ := d.Get("site").(string)
+	if site == "" {
+		site = c.Site
+	}
+	// Read-modify-write: the wlanconf PUT replaces the whole object.
+	current, err := c.GetWLAN(ctx, site, d.Id())
+	if errors.Is(err, unifi.ErrNotFound) {
+		d.SetId("")
+		return nil
+	}
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	req, err := resourceWLANGetResourceData(d, meta, current)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
 	req.ID = d.Id()
-	site, _ := d.Get("site").(string)
-	if site == "" {
-		site = c.Site
+	if req.SiteID == "" {
+		req.SiteID = site
 	}
-	req.SiteID = site
 
 	// go-unifi v1.9.2's updateWLAN converts a successful-but-empty PUT response into
 	// unifi.ErrNotFound (see utils.ReReadOnUpdateNotFound / issue #98); re-read to
@@ -736,4 +803,27 @@ func listFromSchedules(ss []unifi.WLANScheduleWithDuration) []interface{} {
 		}
 	}
 	return list
+}
+
+// wlanBandAttributes reports the radio bands in exactly one of the two conflicting
+// attributes (wlan_band / wlan_bands); the controller returns both. The attribute the
+// state already uses wins; otherwise (import) wlan_bands is used when the bands cannot
+// be expressed by the legacy field (manual band selection or 6 GHz).
+func wlanBandAttributes(resp *unifi.WLAN, d *schema.ResourceData) (interface{}, interface{}) {
+	bands := utils.StringSliceToSet(resp.WLANBands)
+	prior, _ := d.Get("wlan_bands").(*schema.Set)
+	priorBand, _ := d.Get("wlan_band").(string)
+	useBands := false
+	switch {
+	case prior != nil && prior.Len() > 0:
+		useBands = true
+	case priorBand != "":
+		useBands = false
+	default:
+		useBands = resp.WLANBand == "" || resp.SettingPreference == "manual" || slices.Contains(resp.WLANBands, "6g")
+	}
+	if useBands && len(resp.WLANBands) > 0 {
+		return nil, bands
+	}
+	return resp.WLANBand, nil
 }

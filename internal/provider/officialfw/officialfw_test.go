@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
+	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
 )
 
 // listOfStrings builds a Framework list value from the given strings for tests.
@@ -96,9 +97,9 @@ func TestFirewallPolicyAsUnifiModel_Body(t *testing.T) {
 	m := &officialFirewallPolicyModel{
 		Name:            types.StringValue("allow-lan-to-wan"),
 		Action:          types.StringValue(firewallPolicyActionAllow),
-		Source:          types.StringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
-		Destination:     types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
-		IPProtocolScope: types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+		Source:          ut.JSONStringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
+		Destination:     ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope: ut.JSONStringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
 		// Enabled null -> defaults true; LoggingEnabled null -> defaults false.
 	}
 	body, diags := m.AsUnifiModel(context.Background())
@@ -141,9 +142,9 @@ func TestFirewallPolicyAsUnifiModel_WithFilters(t *testing.T) {
 		Description:           types.StringValue("drop invalid"),
 		IpsecFilter:           types.StringValue(firewallPolicyIpsecMatchEncrypted),
 		ConnectionStateFilter: listOfStrings(t, firewallPolicyConnStateNew, firewallPolicyConnStateInvalid),
-		Source:                types.StringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
-		Destination:           types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
-		IPProtocolScope:       types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+		Source:                ut.JSONStringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
+		Destination:           ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope:       ut.JSONStringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
 	}
 	body, diags := m.AsUnifiModel(context.Background())
 	require.False(t, diags.HasError(), "AsUnifiModel diagnostics: %v", diags)
@@ -168,9 +169,9 @@ func TestFirewallPolicyAsUnifiModel_InvalidSourceJSON(t *testing.T) {
 	m := &officialFirewallPolicyModel{
 		Name:            types.StringValue("bad"),
 		Action:          types.StringValue(firewallPolicyActionAllow),
-		Source:          types.StringValue(`{not json`),
-		Destination:     types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
-		IPProtocolScope: types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+		Source:          ut.JSONStringValue(`{not json`),
+		Destination:     ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope: ut.JSONStringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
 	}
 	_, diags := m.AsUnifiModel(context.Background())
 	assert.True(t, diags.HasError(), "expected error for invalid source JSON")
@@ -211,29 +212,58 @@ func TestFirewallPolicyMerge_RoundTrip(t *testing.T) {
 
 func TestFirewallPolicyOrderAsUnifiModel_Conversion(t *testing.T) {
 	t.Parallel()
-	m := &officialFirewallPolicyOrderModel{
-		SourceZoneID:      types.StringValue("11111111-1111-1111-1111-111111111111"),
-		DestinationZoneID: types.StringValue("22222222-2222-2222-2222-222222222222"),
-		PolicyIDs: listOfStrings(t,
-			"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-			"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-		),
+	const a, b = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	cases := map[string]struct {
+		before, after types.List
+		wantJSON      string
+	}{
+		"before only (UI default)": {
+			before: listOfStrings(t, a, b), after: types.ListNull(types.StringType),
+			wantJSON: `{"orderedFirewallPolicyIds":{"beforeSystemDefined":["` + a + `","` + b + `"],"afterSystemDefined":[]}}`,
+		},
+		"after only": {
+			before: ut.EmptyList(types.StringType), after: listOfStrings(t, a),
+			wantJSON: `{"orderedFirewallPolicyIds":{"beforeSystemDefined":[],"afterSystemDefined":["` + a + `"]}}`,
+		},
+		"both empty never sends null": {
+			before: types.ListUnknown(types.StringType), after: types.ListNull(types.StringType),
+			wantJSON: `{"orderedFirewallPolicyIds":{"beforeSystemDefined":[],"afterSystemDefined":[]}}`,
+		},
 	}
-	body, diags := m.AsUnifiModel(context.Background())
-	require.False(t, diags.HasError(), "AsUnifiModel diagnostics: %v", diags)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := &officialFirewallPolicyOrderModel{
+				SourceZoneID:      types.StringValue("11111111-1111-1111-1111-111111111111"),
+				DestinationZoneID: types.StringValue("22222222-2222-2222-2222-222222222222"),
+				BeforeSystemIDs:   tc.before,
+				AfterSystemIDs:    tc.after,
+			}
+			body, diags := m.AsUnifiModel(context.Background())
+			require.False(t, diags.HasError(), "AsUnifiModel diagnostics: %v", diags)
+			ordering, ok := body.(*official.FirewallPolicyOrdering)
+			require.True(t, ok, "expected *official.FirewallPolicyOrdering, got %T", body)
+			raw, err := json.Marshal(ordering)
+			require.NoError(t, err)
+			assert.JSONEq(t, tc.wantJSON, string(raw))
+			assert.NotContains(t, string(raw), "null")
+		})
+	}
+}
 
-	ordering, ok := body.(*official.FirewallPolicyOrdering)
-	require.True(t, ok, "expected *official.FirewallPolicyOrdering, got %T", body)
-	require.Len(t, ordering.OrderedFirewallPolicyIds.AfterSystemDefined, 2)
-	assert.Equal(t, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", ordering.OrderedFirewallPolicyIds.AfterSystemDefined[0].String())
-	assert.Equal(t, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", ordering.OrderedFirewallPolicyIds.AfterSystemDefined[1].String())
+func TestFirewallPolicyOrderAsUnifiModel_InvalidUUID(t *testing.T) {
+	t.Parallel()
+	m := &officialFirewallPolicyOrderModel{BeforeSystemIDs: listOfStrings(t, "not-a-uuid"), AfterSystemIDs: ut.EmptyList(types.StringType)}
+	_, diags := m.AsUnifiModel(context.Background())
+	assert.True(t, diags.HasError())
 }
 
 func TestFirewallPolicyOrderMerge_RoundTrip(t *testing.T) {
 	t.Parallel()
-	raw := `{"orderedFirewallPolicyIds":{"afterSystemDefined":[` +
+	// Shape read from a UniFi Network 11.0.99 console (Internal -> Internal).
+	raw := `{"orderedFirewallPolicyIds":{"beforeSystemDefined":[` +
 		`"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"],` +
-		`"beforeSystemDefined":[]}}`
+		`"afterSystemDefined":[]}}`
 	var ordering official.FirewallPolicyOrdering
 	require.NoError(t, json.Unmarshal([]byte(raw), &ordering))
 
@@ -241,12 +271,46 @@ func TestFirewallPolicyOrderMerge_RoundTrip(t *testing.T) {
 	diags := m.Merge(context.Background(), &ordering)
 	require.False(t, diags.HasError(), "Merge diagnostics: %v", diags)
 
-	var got []string
-	m.PolicyIDs.ElementsAs(context.Background(), &got, false)
-	assert.Equal(t, []string{
-		"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-		"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-	}, got)
+	var before, after []string
+	m.BeforeSystemIDs.ElementsAs(context.Background(), &before, false)
+	m.AfterSystemIDs.ElementsAs(context.Background(), &after, false)
+	assert.Equal(t, []string{"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"}, before)
+	assert.Empty(t, after)
+	assert.False(t, m.AfterSystemIDs.IsNull(), "an empty list must be [] in state, matching the schema default")
+}
+
+func TestFirewallPolicyOrderUpgradeStateV0(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	r, ok := NewOfficialFirewallPolicyOrderResource().(*officialFirewallPolicyOrderResource)
+	require.True(t, ok)
+	up := r.UpgradeState(ctx)[0]
+
+	priorType := up.PriorSchema.Type().TerraformType(ctx)
+	priorRaw := tftypes.NewValue(priorType, map[string]tftypes.Value{
+		"id":                  tftypes.NewValue(tftypes.String, "z1:z2"),
+		"site":                tftypes.NewValue(tftypes.String, "default"),
+		"source_zone_id":      tftypes.NewValue(tftypes.String, "z1"),
+		"destination_zone_id": tftypes.NewValue(tftypes.String, "z2"),
+		"policy_ids": tftypes.NewValue(tftypes.List{ElementType: tftypes.String}, []tftypes.Value{
+			tftypes.NewValue(tftypes.String, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+		}),
+	})
+	var sresp resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &sresp)
+	req := resource.UpgradeStateRequest{State: &tfsdk.State{Raw: priorRaw, Schema: *up.PriorSchema}}
+	resp := resource.UpgradeStateResponse{State: tfsdk.State{Schema: sresp.Schema}}
+	up.StateUpgrader(ctx, req, &resp)
+	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
+	var got officialFirewallPolicyOrderModel
+	require.False(t, resp.State.Get(ctx, &got).HasError())
+	var before, after []string
+	got.BeforeSystemIDs.ElementsAs(ctx, &before, false)
+	got.AfterSystemIDs.ElementsAs(ctx, &after, false)
+	assert.Empty(t, before)
+	assert.Equal(t, []string{"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"}, after)
+	assert.Equal(t, "z1:z2", got.ID.ValueString())
 }
 
 func TestFirewallPolicyOrderMerge_InvalidType(t *testing.T) {
@@ -263,9 +327,9 @@ func basePolicyModel() *officialFirewallPolicyModel {
 	return &officialFirewallPolicyModel{
 		Name:            types.StringValue("p"),
 		Action:          types.StringValue(firewallPolicyActionAllow),
-		Source:          types.StringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
-		Destination:     types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
-		IPProtocolScope: types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+		Source:          ut.JSONStringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
+		Destination:     ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope: ut.JSONStringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
 	}
 }
 

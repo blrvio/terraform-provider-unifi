@@ -118,10 +118,18 @@ func (d *dnsRecordModel) Merge(_ context.Context, i interface{}) diag.Diagnostic
 	d.Name = types.StringValue(other.Key)
 	d.Record = types.StringValue(other.Value)
 	d.Enabled = types.BoolValue(other.Enabled)
-	d.Port = types.Int32Value(int32(other.Port))
-	d.Priority = types.Int32Value(int32(other.Priority))
 	d.Type = types.StringValue(other.RecordType)
 	d.TTL = types.Int32Value(int32(other.Ttl))
-	d.Weight = types.Int32Value(int32(other.Weight))
+	// The controller stores port/priority/weight as 0 on every record; report them only
+	// for the types that use them, so generated config for A/CNAME records validates.
+	d.Port, d.Priority, d.Weight = types.Int32Null(), types.Int32Null(), types.Int32Null()
+	switch other.RecordType {
+	case "SRV":
+		d.Port = types.Int32Value(int32(other.Port))
+		d.Priority = types.Int32Value(int32(other.Priority))
+		d.Weight = types.Int32Value(int32(other.Weight))
+	case "MX":
+		d.Priority = types.Int32Value(int32(other.Priority))
+	}
 	return diags
 }

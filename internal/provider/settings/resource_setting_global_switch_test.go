@@ -177,8 +177,9 @@ func TestOverlayNormalizesAndDedups(t *testing.T) {
 	assert.Equal(t, "net-a", cur.AclL3Isolation[0].SourceNetwork)
 }
 
-// TestMergeRoundTrip checks API->model mapping, including nil collections
-// mapping to empty (not null) sets via types.SetValueFrom.
+// TestMergeRoundTrip checks API->model mapping, including empty collections
+// mapping to null sets: the attributes require at least one element when configured,
+// so an empty known set would make generated config invalid (G16).
 func TestMergeRoundTrip(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -186,7 +187,7 @@ func TestMergeRoundTrip(t *testing.T) {
 	model := &unifi.SettingGlobalSwitch{
 		ID:                 "gs-id",
 		AclDeviceIsolation: []string{"dev-1", "dev-2"},
-		SwitchExclusions:   nil, // should become an empty set, not null
+		SwitchExclusions:   nil, // should become a null set
 		AclL3Isolation: []unifi.SettingGlobalSwitchAclL3Isolation{
 			{SourceNetwork: "net-a", DestinationNetworks: []string{"net-b"}},
 		},
@@ -201,9 +202,8 @@ func TestMergeRoundTrip(t *testing.T) {
 	assert.False(t, m.ACLDeviceIsolation.IsNull())
 	assert.Len(t, m.ACLDeviceIsolation.Elements(), 2)
 
-	// nil slice -> empty (known) set, not null
-	assert.False(t, m.SwitchExclusions.IsNull())
-	assert.Len(t, m.SwitchExclusions.Elements(), 0)
+	// nil/empty slice -> null set
+	assert.True(t, m.SwitchExclusions.IsNull())
 
 	assert.False(t, m.ACLL3Isolation.IsNull())
 	require.Len(t, m.ACLL3Isolation.Elements(), 1)

@@ -81,6 +81,7 @@ func NewSuperEventsResource() resource.Resource {
 	r := &superEventsResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_super_events",
+		unifi.SettingSuperEventsKey,
 		func() *superEventsModel { return &superEventsModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSuperEvents(ctx, site)

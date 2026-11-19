@@ -75,6 +75,7 @@ func NewNetworkOptimizationResource() resource.Resource {
 	r := &networkOptimizationResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_network_optimization",
+		unifi.SettingNetworkOptimizationKey,
 		func() *networkOptimizationModel { return &networkOptimizationModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingNetworkOptimization(ctx, site)

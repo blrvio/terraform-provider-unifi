@@ -16,6 +16,7 @@ import (
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/acl"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/apgroup"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/appblock"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/broadcastgroup"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/channelplan"
@@ -32,6 +33,7 @@ import (
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspotop"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/hotspotpackage"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/mediafile"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/nat"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialfw"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/officialro"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/portal"
@@ -46,6 +48,7 @@ import (
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/virtualdevice"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/wan"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/wifibroadcast"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/wlangroup"
 )
@@ -226,6 +229,9 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		broadcastgroup.NewBroadcastGroupResource,
 		channelplan.NewChannelPlanResource,
 		contentfiltering.NewContentFilteringResource,
+		wan.NewWANLoadBalancingResource,
+		nat.NewNatRuleResource,
+		appblock.NewFirewallAppBlockResource,
 		dhcpoption.NewDHCPOptionResource,
 		scheduletask.NewScheduleTaskResource,
 		tag.NewTagResource,
@@ -247,6 +253,7 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		wifibroadcast.NewWifiBroadcastResource,
 		officialfw.NewOfficialFirewallZoneResource,
 		officialfw.NewOfficialFirewallPolicyResource,
+		officialfw.NewOfficialFirewallPredefinedPolicyResource,
 		officialfw.NewOfficialFirewallPolicyOrderResource,
 		firewall.NewFirewallZoneResource,
 		firewall.NewFirewallZonePolicyResource,
@@ -272,6 +279,7 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		settings.NewUsgResource,
 		settings.NewUsgGeoResource,
 		settings.NewUswResource,
+		settings.NewGlobalNetworkResource,
 		settings.NewGlobalSwitchResource,
 		settings.NewSnmpResource,
 		settings.NewMdnsResource,
@@ -325,6 +333,8 @@ func (p *unifiProvider) DataSources(_ context.Context) []func() datasource.DataS
 		firewall.NewFirewallZoneDatasource,
 		officialro.NewWANDataSource,
 		officialro.NewVPNServerDataSource,
+		officialro.NewVPNServersDataSource,
+		officialro.NewWANsDataSource,
 		officialro.NewSiteToSiteTunnelDataSource,
 		officialro.NewSwitchLAGDataSource,
 		officialro.NewDeviceTagDataSource,

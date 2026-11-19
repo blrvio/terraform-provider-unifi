@@ -13,6 +13,7 @@ import (
 )
 
 func TestAccDataNetwork_byName(t *testing.T) {
+	pt.MarkAccTest(t)
 	defaultName := "Default"
 	v, err := version.NewVersion(testClient.Version())
 	if err != nil {
@@ -38,6 +39,7 @@ func TestAccDataNetwork_byName(t *testing.T) {
 }
 
 func TestAccDataNetwork_byID(t *testing.T) {
+	pt.MarkAccTest(t)
 	defaultName := "Default"
 	v, err := version.NewVersion(testClient.Version())
 	if err != nil {

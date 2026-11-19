@@ -108,7 +108,9 @@ Only applies to access points; ignored by switches and gateways.
 * The device will be removed from the controller
 * The device will need to be readopted to be managed again
 * Device configuration will be reset
-Set to false to keep the device adopted when removing from Terraform management. Defaults to `true`.
+Set to false to keep the device adopted when removing from Terraform management.
+
+Import does not set this attribute (it is destructive): an imported device stays un-forgotten on destroy until the configuration sets it, and the first plan after an import shows it unless it is set explicitly (`forget_on_destroy = false` keeps the device adopted). Defaults to `true`.
 - `mac` (String) The MAC address of the device in standard format (e.g., 'aa:bb:cc:dd:ee:ff'). This is used to identify and manage specific devices that have already been adopted by the controller.
 - `name` (String) A friendly name for the device that will be displayed in the UniFi controller UI. Examples:
 * 'Office-AP-1' for an access point

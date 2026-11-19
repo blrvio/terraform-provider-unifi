@@ -216,6 +216,7 @@ func NewGlobalApResource() resource.Resource {
 	r := &globalApResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_global_ap",
+		unifi.SettingGlobalApKey,
 		func() *globalApModel { return &globalApModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingGlobalAp(ctx, site)

@@ -20,7 +20,7 @@ import (
 )
 
 func userImportStep(name string) resource.TestStep {
-	return pt.ImportStep(name, "allow_existing", "skip_forget_on_destroy")
+	return pt.ImportStep(name, "skip_forget_on_destroy")
 }
 
 func TestAccUser_basic(t *testing.T) {

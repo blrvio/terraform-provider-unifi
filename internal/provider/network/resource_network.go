@@ -32,7 +32,7 @@ var (
 	wanTypeV6Regexp   = regexp.MustCompile("disabled|dhcpv6|static")
 	validateWANTypeV6 = validation.StringMatch(wanTypeV6Regexp, "invalid WANv6 connection type")
 
-	wanPasswordRegexp   = regexp.MustCompile("[^\"' ]+")
+	wanPasswordRegexp   = regexp.MustCompile("^[^\"' ]+$")
 	validateWANPassword = validation.StringMatch(wanPasswordRegexp, "invalid WAN password")
 
 	wanNetworkGroupRegexp   = regexp.MustCompile("WAN[2]?|WAN_LTE_FAILOVER")
@@ -159,9 +159,17 @@ func ResourceNetwork() *schema.Resource {
 				DiffSuppressFunc: utils.CidrDiffSuppress,
 				ValidateFunc:     utils.CidrValidate,
 			},
+			"official_id": {
+				Description: "The UUID of this network in the UniFi Official API (`integration/v1`), stored by the controller " +
+					"as `external_id` (UniFi Network 11.x). Use it wherever an Official API resource needs the network, " +
+					"e.g. `unifi_official_firewall_zone.network_ids`, instead of hard-coding the UUID. Empty on controllers " +
+					"that do not report it.",
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"network_group": {
 				Description: "The network group for this network. Default is 'LAN'. For WAN networks, use 'WAN' or 'WAN2'. " +
-					"Network groups help organize and apply policies to multiple networks.",
+					"Network groups help organize and apply policies to multiple networks.\n\nWhen the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default.",
 				Type:     schema.TypeString,
 				Optional: true,
 				Default:  "LAN",
@@ -218,7 +226,7 @@ func ResourceNetwork() *schema.Resource {
 					"* 86400 (1 day) - Default, suitable for most networks\n" +
 					"* 3600 (1 hour) - For testing or temporary networks\n" +
 					"* 604800 (1 week) - For stable networks with static clients\n" +
-					"* 2592000 (30 days) - For very stable networks",
+					"* 2592000 (30 days) - For very stable networks\n\nWhen the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default.",
 				Type:     schema.TypeInt,
 				Optional: true,
 				Default:  86400,
@@ -346,7 +354,7 @@ func ResourceNetwork() *schema.Resource {
 					"* 86400 (1 day) - Default setting\n" +
 					"* 3600 (1 hour) - For testing\n" +
 					"* 604800 (1 week) - For stable networks\n" +
-					"Typically longer than IPv4 DHCP leases.",
+					"Typically longer than IPv4 DHCP leases.\n\nWhen the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default.",
 				Type:     schema.TypeInt,
 				Optional: true,
 				Default:  86400,
@@ -463,7 +471,7 @@ func ResourceNetwork() *schema.Resource {
 					"Choose based on your IPv6 deployment strategy and ISP capabilities. " +
 					"Note: `single_network` has companion controller settings (the single-network " +
 					"interface/LAN binding) that this provider does not yet expose, so a bare " +
-					"`single_network` network may not be fully configurable.",
+					"`single_network` network may not be fully configurable.\n\nWhen the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default.",
 				Type:         schema.TypeString,
 				Optional:     true,
 				Default:      "none",
@@ -575,7 +583,7 @@ func ResourceNetwork() *schema.Resource {
 				Description: "The preferred lifetime (in seconds) for IPv6 addresses in Router Advertisements.\n" +
 					"* Must be less than or equal to `ipv6_ra_valid_lifetime`\n" +
 					"* Default: 14400 (4 hours)\n" +
-					"* After this time, addresses become deprecated but still usable",
+					"* After this time, addresses become deprecated but still usable\n\nWhen the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default.",
 				Type:     schema.TypeInt,
 				Optional: true,
 				Default:  14400,
@@ -603,7 +611,7 @@ func ResourceNetwork() *schema.Resource {
 				Description: "The valid lifetime (in seconds) for IPv6 addresses in Router Advertisements.\n" +
 					"* Must be greater than or equal to `ipv6_ra_preferred_lifetime`\n" +
 					"* Default: 86400 (24 hours)\n" +
-					"* After this time, addresses become invalid",
+					"* After this time, addresses become invalid\n\nWhen the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default.",
 				Type:     schema.TypeInt,
 				Optional: true,
 				Default:  86400,
@@ -700,6 +708,7 @@ func ResourceNetwork() *schema.Resource {
 					"* Must be kept secret",
 				Type:         schema.TypeString,
 				Optional:     true,
+				Sensitive:    true,
 				ValidateFunc: validateWANPassword,
 			},
 			"wan_type_v6": {
@@ -1111,6 +1120,8 @@ func resourceNetworkGetResourceData(d *schema.ResourceData, current *unifi.Netwo
 		n.FirewallZoneID, _ = d.Get("firewall_zone_id").(string)
 	}
 
+	applyUnsetDefaults(n, current)
+
 	return n, nil
 }
 
@@ -1357,10 +1368,8 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		vlan = resp.VLAN
 	}
 
-	dhcpLease := resp.DHCPDLeaseTime
-	if resp.DHCPDEnabled && dhcpLease == 0 {
-		dhcpLease = 86400
-	}
+	// Unset (omitted) values read as the schema default; see unset_defaults.go.
+	dhcpLease := utils.OrDefault(resp.DHCPDLeaseTime, defaultDHCPLease)
 
 	dhcpDNS := []string{}
 	if resp.DHCPDDNSEnabled {
@@ -1402,15 +1411,8 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		dhcpV6DNS = append(dhcpV6DNS, dns)
 	}
 
-	networkGroup := resp.NetworkGroup
-	if resp.Purpose == "wan" && networkGroup == "" {
-		networkGroup = "LAN"
-	}
-
-	ipv6InterfaceType := resp.IPV6InterfaceType
-	if resp.Purpose == "wan" && ipv6InterfaceType == "" {
-		ipv6InterfaceType = "none"
-	}
+	networkGroup := utils.OrDefault(resp.NetworkGroup, defaultNetworkGroup)
+	ipv6InterfaceType := utils.OrDefault(resp.IPV6InterfaceType, defaultIPV6InterfaceType)
 
 	// The controller returns a null public key, so derive it from the private key
 	// (the response value, or the one we generated and stored in state).
@@ -1450,7 +1452,7 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		"dhcp_v6_dns_auto":              resp.DHCPDV6DNSAuto,
 		"dhcp_v6_dns":                   dhcpV6DNS,
 		"dhcp_v6_enabled":               resp.DHCPDV6Enabled,
-		"dhcp_v6_lease":                 resp.DHCPDV6LeaseTime,
+		"dhcp_v6_lease":                 utils.OrDefault(resp.DHCPDV6LeaseTime, defaultDHCPV6Lease),
 		"dhcp_v6_start":                 resp.DHCPDV6Start,
 		"dhcp_v6_stop":                  resp.DHCPDV6Stop,
 		"dhcpd_boot_enabled":            resp.DHCPDBootEnabled,
@@ -1466,14 +1468,15 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		"network_isolation_enabled":     resp.NetworkIsolationEnabled,
 
 		"ipv6_interface_type":        ipv6InterfaceType,
+		"official_id":                resp.ExternalID,
 		"ipv6_pd_interface":          resp.IPV6PDInterface,
 		"ipv6_pd_prefixid":           resp.IPV6PDPrefixid,
 		"ipv6_pd_start":              resp.IPV6PDStart,
 		"ipv6_pd_stop":               resp.IPV6PDStop,
 		"ipv6_ra_enable":             resp.IPV6RaEnabled,
-		"ipv6_ra_preferred_lifetime": resp.IPV6RaPreferredLifetime,
+		"ipv6_ra_preferred_lifetime": utils.OrDefault(resp.IPV6RaPreferredLifetime, defaultIPV6RaPreferredLife),
 		"ipv6_ra_priority":           resp.IPV6RaPriority,
-		"ipv6_ra_valid_lifetime":     resp.IPV6RaValidLifetime,
+		"ipv6_ra_valid_lifetime":     utils.OrDefault(resp.IPV6RaValidLifetime, defaultIPV6RaValidLife),
 		"ipv6_static_subnet":         resp.IPV6Subnet,
 		"multicast_dns":              resp.MdnsEnabled,
 		"wan_dhcp_v6_pd_size":        resp.WANDHCPv6PDSize,

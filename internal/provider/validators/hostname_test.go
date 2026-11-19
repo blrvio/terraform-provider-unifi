@@ -103,3 +103,38 @@ func TestHostnameValidator(t *testing.T) {
 		})
 	}
 }
+
+func TestHostLabelOrFQDNValidator(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		val         types.String
+		expectError bool
+	}{
+		"unknown":                {val: types.StringUnknown()},
+		"null":                   {val: types.StringNull()},
+		"single label (console)": {val: types.StringValue("UDM-Pro-Central")},
+		"single label short":     {val: types.StringValue("ntp")},
+		"single char":            {val: types.StringValue("a")},
+		"fqdn":                   {val: types.StringValue("time.cloudflare.com")},
+		"empty":                  {val: types.StringValue(""), expectError: true},
+		"leading hyphen":         {val: types.StringValue("-udm"), expectError: true},
+		"trailing hyphen":        {val: types.StringValue("udm-"), expectError: true},
+		"trailing dot label":     {val: types.StringValue("udm."), expectError: true},
+		"underscore":             {val: types.StringValue("udm_pro"), expectError: true},
+		"space":                  {val: types.StringValue("udm pro"), expectError: true},
+		"with scheme":            {val: types.StringValue("https://udm"), expectError: true},
+		"label too long":         {val: types.StringValue("a123456789012345678901234567890123456789012345678901234567890123"), expectError: true},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			req := validator.StringRequest{ConfigValue: tc.val}
+			resp := validator.StringResponse{}
+			validators.HostLabelOrFQDN().ValidateString(context.Background(), req, &resp)
+			if resp.Diagnostics.HasError() != tc.expectError {
+				t.Fatalf("expectError=%v, got diags %v", tc.expectError, resp.Diagnostics)
+			}
+		})
+	}
+}

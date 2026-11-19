@@ -4,11 +4,14 @@ page_title: "unifi_official_firewall_zone Resource - terraform-provider-unifi"
 subcategory: ""
 description: |-
   Manages a firewall zone via the UniFi Official API (integration/v1). Requires a controller running version 10.1.78 or later with API-key authentication.
+  The built-in zones (origin = "SYSTEM_DEFINED": Internal, External, Gateway, Vpn, Hotspot, Dmz) can be imported. Their name cannot change and they cannot be destroyed; only the networks of a zone with configurable = true can be edited. The plan fails early for any other change; to stop managing a system zone use a removed block.
 ---
 
 # unifi_official_firewall_zone (Resource)
 
 Manages a firewall zone via the UniFi **Official API** (`integration/v1`). Requires a controller running version 10.1.78 or later with API-key authentication.
+
+The built-in zones (`origin = "SYSTEM_DEFINED"`: Internal, External, Gateway, Vpn, Hotspot, Dmz) can be imported. Their name cannot change and they cannot be destroyed; only the networks of a zone with `configurable = true` can be edited. The plan fails early for any other change; to stop managing a system zone use a `removed` block.
 
 ## Example Usage
 
@@ -39,7 +42,9 @@ resource "unifi_official_firewall_zone" "iot" {
 
 ### Read-Only
 
+- `configurable` (Boolean) Whether the zone's networks can be changed. Always true for user zones; false for the External, Gateway and Vpn system zones.
 - `id` (String) The unique identifier of this resource.
+- `origin` (String) Who defined the zone: `USER_DEFINED` or `SYSTEM_DEFINED`.
 
 ## Import
 

@@ -63,10 +63,10 @@ resource "unifi_official_firewall_policy" "block_invalid" {
 ### Required
 
 - `action` (String) Action applied to matched traffic. One of `ALLOW`, `BLOCK`, `REJECT`.
-- `destination` (String) JSON-encoded firewall policy destination object (must include at least `zoneId`).
-- `ip_protocol_scope` (String) JSON-encoded IP protocol scope object (must include at least `ipVersion`).
+- `destination` (String) JSON-encoded firewall policy destination object (must include at least `zoneId`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
+- `ip_protocol_scope` (String) JSON-encoded IP protocol scope object (must include at least `ipVersion`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `name` (String) Name of the firewall policy.
-- `source` (String) JSON-encoded firewall policy source object (must include at least `zoneId`).
+- `source` (String) JSON-encoded firewall policy source object (must include at least `zoneId`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 
 ### Optional
 
@@ -76,7 +76,7 @@ resource "unifi_official_firewall_policy" "block_invalid" {
 - `ipsec_filter` (String) Match on traffic encrypted, or not encrypted by IPsec. One of `MATCH_ENCRYPTED`, `MATCH_NOT_ENCRYPTED`. If unset, matches all traffic.
 - `logging_enabled` (Boolean) Generate syslog entries when traffic is matched. Defaults to `false`.
 - `report_flow_enabled` (Boolean) Report traffic matched by this policy in Insights Flows. Requires a controller running 11.0.99 or later; on older controllers it cannot be set and is always null. When omitted on create the controller default (`true`) is used and read back; from then on the value in state is sent on every update, so a policy with reporting turned off is not switched back on. Removing the attribute from the configuration keeps the last known value.
-- `schedule` (String) JSON-encoded firewall schedule object. If unset, the policy is always active.
+- `schedule` (String) JSON-encoded firewall schedule object. If unset, the policy is always active. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `site` (String) The name of the UniFi site where this resource should be applied. If not specified, the default site will be used.
 
 ### Read-Only
