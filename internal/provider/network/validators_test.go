@@ -1,6 +1,11 @@
 package network
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/hashicorp/go-cty/cty"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+)
 
 // TestIntZeroOr covers the "0 (unset) or defer to inner" WAN validators (G3):
 // importing a WAN that leaves wan_prefixlen / wan_dhcp_v6_pd_size /
@@ -9,7 +14,7 @@ import "testing"
 func TestIntZeroOr(t *testing.T) {
 	tests := []struct {
 		name      string
-		validate  func(interface{}, string) ([]string, []error)
+		validate  schema.SchemaValidateDiagFunc
 		value     int
 		wantError bool
 	}{
@@ -25,12 +30,12 @@ func TestIntZeroOr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, errs := tt.validate(tt.value, "field")
-			if tt.wantError && len(errs) == 0 {
+			diags := tt.validate(tt.value, cty.GetAttrPath("field"))
+			if tt.wantError && !diags.HasError() {
 				t.Fatalf("expected an error for value %d, got none", tt.value)
 			}
-			if !tt.wantError && len(errs) > 0 {
-				t.Fatalf("expected no error for value %d, got %v", tt.value, errs)
+			if !tt.wantError && diags.HasError() {
+				t.Fatalf("expected no error for value %d, got %v", tt.value, diags)
 			}
 		})
 	}

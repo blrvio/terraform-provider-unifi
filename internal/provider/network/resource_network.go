@@ -54,9 +54,9 @@ var (
 	// WAN IPv6 sizing/port fields default to 0 when the WAN is not IPv6-static / not a
 	// WireGuard client. Accept 0 (unset) OR the valid range so importing a WAN that
 	// leaves these unset doesn't fail validation.
-	validateWANDHCPv6PDSize      = intZeroOr(validation.IntBetween(48, 64))
-	validateWANPrefixlen         = intZeroOr(validation.IntBetween(1, 128))
-	validateWireguardPeerPortOpt = intZeroOr(validation.IsPortNumber)
+	validateWANDHCPv6PDSize      = intZeroOr(validation.ToDiagFunc(validation.IntBetween(48, 64)))
+	validateWANPrefixlen         = intZeroOr(validation.ToDiagFunc(validation.IntBetween(1, 128)))
+	validateWireguardPeerPortOpt = intZeroOr(validation.ToDiagFunc(validation.IsPortNumber))
 
 	ipV6RAPriorityRegexp   = regexp.MustCompile("high|medium|low")
 	validateIPV6RAPriority = validation.StringMatch(ipV6RAPriorityRegexp, "invalid IPv6 RA priority")
@@ -64,12 +64,12 @@ var (
 
 // intZeroOr accepts 0 (the "unset" sentinel these optional int fields carry when
 // they don't apply) or defers to inner for any non-zero value.
-func intZeroOr(inner schema.SchemaValidateFunc) schema.SchemaValidateFunc {
-	return func(i interface{}, k string) ([]string, []error) {
+func intZeroOr(inner schema.SchemaValidateDiagFunc) schema.SchemaValidateDiagFunc {
+	return func(i interface{}, p cty.Path) diag.Diagnostics {
 		if v, ok := i.(int); ok && v == 0 {
-			return nil, nil
+			return nil
 		}
-		return inner(i, k)
+		return inner(i, p)
 	}
 }
 
@@ -715,9 +715,9 @@ func ResourceNetwork() *schema.Resource {
 			"wan_dhcp_v6_pd_size": {
 				Description: "The IPv6 prefix size to request from ISP. Must be between 48 and 64.\n" +
 					"Only applicable when `wan_type_v6` is 'dhcpv6'.",
-				Type:         schema.TypeInt,
-				Optional:     true,
-				ValidateFunc: validateWANDHCPv6PDSize,
+				Type:             schema.TypeInt,
+				Optional:         true,
+				ValidateDiagFunc: validateWANDHCPv6PDSize,
 			},
 			"wan_ipv6": {
 				Description: "The static IPv6 address for WAN interface.\n" +
@@ -738,9 +738,9 @@ func ResourceNetwork() *schema.Resource {
 			"wan_prefixlen": {
 				Description: "The IPv6 prefix length for WAN interface. Must be between 1 and 128.\n" +
 					"Only applicable when `wan_type_v6` is 'static'.",
-				Type:         schema.TypeInt,
-				Optional:     true,
-				ValidateFunc: validateWANPrefixlen,
+				Type:             schema.TypeInt,
+				Optional:         true,
+				ValidateDiagFunc: validateWANPrefixlen,
 			},
 			"vpn_type": {
 				Description: "The VPN type. `wireguard-client` connects the gateway to a remote WireGuard server " +
@@ -761,10 +761,10 @@ func ResourceNetwork() *schema.Resource {
 			"local_port": {
 				Description: "The UDP port the WireGuard VPN server listens on (e.g. 51820). " +
 					"Only applicable when `vpn_type` is 'wireguard-server'.",
-				Type:         schema.TypeInt,
-				Optional:     true,
-				Computed:     true,
-				ValidateFunc: validateWireguardPeerPortOpt,
+				Type:             schema.TypeInt,
+				Optional:         true,
+				Computed:         true,
+				ValidateDiagFunc: validateWireguardPeerPortOpt,
 			},
 			"vpn_binding_mode": {
 				Description: "How the WireGuard VPN server binds to its egress interface (e.g. `interface`). " +
@@ -812,9 +812,9 @@ func ResourceNetwork() *schema.Resource {
 			"wireguard_client_peer_port": {
 				Description: "The remote WireGuard server's listen port (e.g. 51820). " +
 					"Only applicable when `vpn_type` is 'wireguard-client'.",
-				Type:         schema.TypeInt,
-				Optional:     true,
-				ValidateFunc: validateWireguardPeerPortOpt,
+				Type:             schema.TypeInt,
+				Optional:         true,
+				ValidateDiagFunc: validateWireguardPeerPortOpt,
 			},
 			"wireguard_client_peer_public_key": {
 				Description: "The remote WireGuard server's public key (the peer the gateway connects to). " +

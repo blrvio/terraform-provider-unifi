@@ -15,12 +15,14 @@ import (
 // TestUsgGeoSchemaValid ensures the resource schema builds without diagnostics.
 func TestUsgGeoSchemaValid(t *testing.T) {
 	var resp resource.SchemaResponse
-	NewUsgGeoResource().(interface {
+	r, ok := NewUsgGeoResource().(interface {
 		Schema(context.Context, resource.SchemaRequest, *resource.SchemaResponse)
-	}).Schema(context.Background(), resource.SchemaRequest{}, &resp)
+	})
+	require.True(t, ok, "usg geo resource must implement Schema")
+	r.Schema(context.Background(), resource.SchemaRequest{}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "schema build returned diagnostics: %v", resp.Diagnostics)
 
-	_, ok := resp.Schema.Attributes["ip_filtering"]
+	_, ok = resp.Schema.Attributes["ip_filtering"]
 	assert.True(t, ok, "expected an ip_filtering attribute")
 }
 
