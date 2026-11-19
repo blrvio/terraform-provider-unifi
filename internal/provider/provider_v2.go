@@ -251,6 +251,7 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		wifibroadcast.NewWifiBroadcastResource,
 		officialfw.NewOfficialFirewallZoneResource,
 		officialfw.NewOfficialFirewallPolicyResource,
+		officialfw.NewOfficialFirewallPredefinedPolicyResource,
 		officialfw.NewOfficialFirewallPolicyOrderResource,
 		firewall.NewFirewallZoneResource,
 		firewall.NewFirewallZonePolicyResource,
