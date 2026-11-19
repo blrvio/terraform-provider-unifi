@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 
@@ -617,6 +618,8 @@ func resourceWLANSetResourceData(resp *unifi.WLAN, d *schema.ResourceData, site 
 		minRate5g = resp.MinrateNaDataRateKbps
 	}
 
+	wlanBand, wlanBands := wlanBandAttributes(resp, d)
+
 	for key, value := range map[string]interface{}{
 		"site":                         site,
 		"name":                         resp.Name,
@@ -633,8 +636,8 @@ func resourceWLANSetResourceData(resp *unifi.WLAN, d *schema.ResourceData, site 
 		"mac_filter_policy":            macFilterPolicy,
 		"radius_profile_id":            resp.RADIUSProfileID,
 		"schedule":                     schedule,
-		"wlan_band":                    resp.WLANBand,
-		"wlan_bands":                   utils.StringSliceToSet(resp.WLANBands),
+		"wlan_band":                    wlanBand,
+		"wlan_bands":                   wlanBands,
 		"no2ghz_oui":                   resp.No2GhzOui,
 		"l2_isolation":                 resp.L2Isolation,
 		"proxy_arp":                    resp.ProxyArp,
@@ -800,4 +803,27 @@ func listFromSchedules(ss []unifi.WLANScheduleWithDuration) []interface{} {
 		}
 	}
 	return list
+}
+
+// wlanBandAttributes reports the radio bands in exactly one of the two conflicting
+// attributes (wlan_band / wlan_bands); the controller returns both. The attribute the
+// state already uses wins; otherwise (import) wlan_bands is used when the bands cannot
+// be expressed by the legacy field (manual band selection or 6 GHz).
+func wlanBandAttributes(resp *unifi.WLAN, d *schema.ResourceData) (interface{}, interface{}) {
+	bands := utils.StringSliceToSet(resp.WLANBands)
+	prior, _ := d.Get("wlan_bands").(*schema.Set)
+	priorBand, _ := d.Get("wlan_band").(string)
+	useBands := false
+	switch {
+	case prior != nil && prior.Len() > 0:
+		useBands = true
+	case priorBand != "":
+		useBands = false
+	default:
+		useBands = resp.WLANBand == "" || resp.SettingPreference == "manual" || slices.Contains(resp.WLANBands, "6g")
+	}
+	if useBands && len(resp.WLANBands) > 0 {
+		return nil, bands
+	}
+	return resp.WLANBand, nil
 }

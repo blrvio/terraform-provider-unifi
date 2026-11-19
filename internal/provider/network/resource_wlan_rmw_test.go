@@ -44,3 +44,40 @@ func TestWLANGetResourceDataReadModifyWrite(t *testing.T) {
 	assert.True(t, created.Enabled)
 	assert.Equal(t, 3600, created.GroupRekey)
 }
+
+// G15: the controller returns wlan_band and wlan_bands together; state (and generated
+// config) must carry only one, since the attributes conflict.
+func TestWLANBandAttributes(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		resp      unifi.WLAN
+		prior     map[string]interface{}
+		wantBand  interface{}
+		wantBands bool
+	}{
+		"import auto both":     {resp: unifi.WLAN{WLANBand: "both", WLANBands: []string{"2g", "5g"}, SettingPreference: "auto"}, wantBand: "both"},
+		"import manual":        {resp: unifi.WLAN{WLANBand: "both", WLANBands: []string{"2g", "5g"}, SettingPreference: "manual"}, wantBands: true},
+		"import 6g":            {resp: unifi.WLAN{WLANBand: "both", WLANBands: []string{"2g", "5g", "6g"}}, wantBands: true},
+		"state uses wlan_band": {resp: unifi.WLAN{WLANBand: "5g", WLANBands: []string{"5g"}, SettingPreference: "manual"}, prior: map[string]interface{}{"wlan_band": "5g"}, wantBand: "5g"},
+		"state uses wlan_bands": {resp: unifi.WLAN{WLANBand: "both", WLANBands: []string{"2g", "5g"}, SettingPreference: "auto"},
+			prior: map[string]interface{}{"wlan_bands": []interface{}{"2g", "5g"}}, wantBands: true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			raw := tc.prior
+			if raw == nil {
+				raw = map[string]interface{}{}
+			}
+			d := schema.TestResourceDataRaw(t, ResourceWLAN().Schema, raw)
+			band, bands := wlanBandAttributes(&tc.resp, d)
+			if tc.wantBands {
+				assert.Nil(t, band)
+				assert.NotNil(t, bands)
+			} else {
+				assert.Equal(t, tc.wantBand, band)
+				assert.Nil(t, bands)
+			}
+		})
+	}
+}
