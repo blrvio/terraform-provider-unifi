@@ -32,7 +32,9 @@ func TestRadiusDefaultProfileReadAndValidate(t *testing.T) {
 	assert.Equal(t, "", d.Get("auth_server.0.ip"))
 
 	// The matching configuration validates: no IP, empty vlan_wlan_mode.
-	ipSchema := r.Schema["auth_server"].Elem.(*schema.Resource).Schema["ip"]
+	authElem, ok := r.Schema["auth_server"].Elem.(*schema.Resource)
+	require.True(t, ok)
+	ipSchema := authElem.Schema["ip"]
 	assert.False(t, ipSchema.Required)
 	_, errs := ipSchema.ValidateFunc("", "ip")
 	assert.Empty(t, errs)
@@ -44,8 +46,10 @@ func TestRadiusDefaultProfileReadAndValidate(t *testing.T) {
 
 func TestRadiusProfileUpdateKeepsSystemAttributes(t *testing.T) {
 	t.Parallel()
-	managed := &unifi.RADIUSProfile{Name: "Default", UseUsgAuthServer: true, InterimUpdateInterval: 3600,
-		AuthServers: []unifi.RADIUSProfileAuthServers{{Port: 1812, XSecret: "new"}}}
+	managed := &unifi.RADIUSProfile{
+		Name: "Default", UseUsgAuthServer: true, InterimUpdateInterval: 3600,
+		AuthServers: []unifi.RADIUSProfileAuthServers{{Port: 1812, XSecret: "new"}},
+	}
 	got := overlayManagedRadiusProfile(defaultProfile(), managed)
 	assert.True(t, got.NoDelete)
 	assert.Equal(t, "Default", got.HiddenID)
