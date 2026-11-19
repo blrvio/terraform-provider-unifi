@@ -32,7 +32,7 @@ var (
 	wanTypeV6Regexp   = regexp.MustCompile("disabled|dhcpv6|static")
 	validateWANTypeV6 = validation.StringMatch(wanTypeV6Regexp, "invalid WANv6 connection type")
 
-	wanPasswordRegexp   = regexp.MustCompile("[^\"' ]+")
+	wanPasswordRegexp   = regexp.MustCompile("^[^\"' ]+$")
 	validateWANPassword = validation.StringMatch(wanPasswordRegexp, "invalid WAN password")
 
 	wanNetworkGroupRegexp   = regexp.MustCompile("WAN[2]?|WAN_LTE_FAILOVER")
@@ -700,6 +700,7 @@ func ResourceNetwork() *schema.Resource {
 					"* Must be kept secret",
 				Type:         schema.TypeString,
 				Optional:     true,
+				Sensitive:    true,
 				ValidateFunc: validateWANPassword,
 			},
 			"wan_type_v6": {

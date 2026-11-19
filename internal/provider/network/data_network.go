@@ -274,6 +274,7 @@ func DataNetwork() *schema.Resource {
 				Description: "Specifies the IPV4 WAN password.",
 				Type:        schema.TypeString,
 				Computed:    true,
+				Sensitive:   true,
 			},
 			"wan_type_v6": {
 				Description: "Specifies the IPV6 WAN connection type. Must be one of either `disabled`, `static`, or `dhcpv6`.",

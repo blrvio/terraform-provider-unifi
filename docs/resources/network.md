@@ -349,7 +349,7 @@ Choose based on your ISP's requirements.
 - `wireguard_client_preshared_key_enabled` (Boolean) Whether a WireGuard pre-shared key is used with the peer. Only applicable when `vpn_type` is 'wireguard-client'.
 - `wireguard_interface` (String) The WAN interface the WireGuard tunnel egresses from. One of `wan` or `wan2`. Only applicable when `vpn_type` is 'wireguard-client'.
 - `wireguard_interface_binding_mode_ip_version` (String) The IP version the WireGuard VPN server binds on. One of `v4` or `v6`. Only applicable when `vpn_type` is 'wireguard-server'.
-- `x_wan_password` (String) Password for WAN authentication.
+- `x_wan_password` (String, Sensitive) Password for WAN authentication.
 * Required for PPPoE connections
 * May be needed for some ISP configurations
 * Must be kept secret
