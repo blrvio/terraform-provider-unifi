@@ -15,6 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
@@ -58,6 +60,7 @@ type officialFirewallPolicyModel struct {
 	Action                types.String `tfsdk:"action"`
 	Enabled               types.Bool   `tfsdk:"enabled"`
 	LoggingEnabled        types.Bool   `tfsdk:"logging_enabled"`
+	ReportFlowEnabled     types.Bool   `tfsdk:"report_flow_enabled"`
 	Description           types.String `tfsdk:"description"`
 	IpsecFilter           types.String `tfsdk:"ipsec_filter"`
 	ConnectionStateFilter types.List   `tfsdk:"connection_state_filter"`
@@ -94,6 +97,16 @@ func (m *officialFirewallPolicyModel) AsUnifiModel(ctx context.Context) (interfa
 		Enabled:        m.enabledValue(),
 		LoggingEnabled: m.loggingEnabledValue(),
 		Description:    strPtr(m.Description),
+	}
+
+	// The PUT is a full replace and the controller resets an omitted
+	// reportFlowEnabled to true, so send it whenever the plan knows the value
+	// (configured, or carried over from state by UseStateForUnknown). Only an
+	// unknown value (create without the attribute) is omitted, letting the
+	// controller apply its default, which is then read back.
+	if ut.IsDefined(m.ReportFlowEnabled) {
+		v := m.ReportFlowEnabled.ValueBool()
+		body.ReportFlowEnabled = &v
 	}
 
 	if v := strPtr(m.IpsecFilter); v != nil {
@@ -190,6 +203,7 @@ func (m *officialFirewallPolicyModel) Merge(ctx context.Context, other interface
 	m.Action = types.StringValue(policy.Action.Type)
 	m.Enabled = types.BoolValue(policy.Enabled)
 	m.LoggingEnabled = types.BoolValue(policy.LoggingEnabled)
+	m.ReportFlowEnabled = types.BoolValue(policy.ReportFlowEnabled)
 	m.Index = types.Int32Value(policy.Index)
 	m.Description = strFromPtr(policy.Description)
 
@@ -297,6 +311,18 @@ func (r *officialFirewallPolicyResource) Schema(_ context.Context, _ resource.Sc
 				Computed:            true,
 				Default:             booldefault.StaticBool(false),
 			},
+			"report_flow_enabled": schema.BoolAttribute{
+				MarkdownDescription: "Report traffic matched by this policy in Insights Flows. Requires a controller " +
+					"running 11.0.99 or later; on older controllers it cannot be set and is always null. When omitted " +
+					"on create the controller default (`true`) is used and read back; from then on the value in state " +
+					"is sent on every update, so a policy with reporting turned off is not switched back on. Removing " +
+					"the attribute from the configuration keeps the last known value.",
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"description": schema.StringAttribute{
 				MarkdownDescription: "Optional description of the firewall policy.",
 				Optional:            true,
@@ -352,6 +378,32 @@ func (r *officialFirewallPolicyResource) ModifyPlan(_ context.Context, req resou
 	}
 	resp.Diagnostics.Append(r.GetClient().RequireOfficialAPI()...)
 	resp.Diagnostics.Append(r.RequireMinVersion(base.ControllerVersionOfficialAPI.String())...)
+	resp.Diagnostics.Append(r.RequireMinVersionForPath(
+		base.ControllerVersionFirewallPolicyReportFlow.String(), path.Root("report_flow_enabled"), req.Config,
+	)...)
+}
+
+// reportFlowSupported reports whether the controller models reportFlowEnabled.
+// Older controllers neither return nor accept it, so the provider never sends it
+// to them and keeps report_flow_enabled null in state.
+func (r *officialFirewallPolicyResource) reportFlowSupported() bool {
+	return r.GetClient().SupportsFirewallPolicyReportFlow()
+}
+
+// dropUnsupportedReportFlow strips reportFlowEnabled from the request body when
+// the controller predates it.
+func (r *officialFirewallPolicyResource) dropUnsupportedReportFlow(body *official.FirewallPolicyCreateOrUpdate) {
+	if !r.reportFlowSupported() {
+		body.ReportFlowEnabled = nil
+	}
+}
+
+// nullUnsupportedReportFlow clears report_flow_enabled after a merge when the
+// controller predates it (its zero-valued false would be meaningless).
+func (r *officialFirewallPolicyResource) nullUnsupportedReportFlow(m *officialFirewallPolicyModel) {
+	if !r.reportFlowSupported() {
+		m.ReportFlowEnabled = types.BoolNull()
+	}
 }
 
 func (r *officialFirewallPolicyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -381,12 +433,14 @@ func (r *officialFirewallPolicyResource) Create(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.dropUnsupportedReportFlow(createBody)
 	created, err := client.Official().Firewall().CreatePolicy(ctx, siteID, *createBody)
 	if err != nil {
 		resp.Diagnostics.Append(base.OfficialAPIErrorDiagnostics("Error creating firewall policy", err)...)
 		return
 	}
 	resp.Diagnostics.Append(plan.Merge(ctx, created)...)
+	r.nullUnsupportedReportFlow(&plan)
 	plan.SetSite(siteName)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
@@ -418,6 +472,7 @@ func (r *officialFirewallPolicyResource) Read(ctx context.Context, req resource.
 		return
 	}
 	resp.Diagnostics.Append(state.Merge(ctx, policy)...)
+	r.nullUnsupportedReportFlow(&state)
 	state.SetSite(siteName)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -450,12 +505,14 @@ func (r *officialFirewallPolicyResource) Update(ctx context.Context, req resourc
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	r.dropUnsupportedReportFlow(updateBody)
 	updated, err := client.Official().Firewall().UpdatePolicy(ctx, siteID, id, *updateBody)
 	if err != nil {
 		resp.Diagnostics.Append(base.OfficialAPIErrorDiagnostics("Error updating firewall policy", err)...)
 		return
 	}
 	resp.Diagnostics.Append(plan.Merge(ctx, updated)...)
+	r.nullUnsupportedReportFlow(&plan)
 	plan.SetSite(siteName)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }

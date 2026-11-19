@@ -70,6 +70,17 @@ func CheckMinimumControllerVersion(versionString string) error {
 
 // TODO remove until here
 
+// ControllerVersionFirewallPolicyReportFlow is the first controller version whose
+// Official-API firewall policies carry reportFlowEnabled (report matched traffic
+// in Insights Flows). Older controllers neither return nor accept the field.
+var ControllerVersionFirewallPolicyReportFlow = AsVersion("11.0.99")
+
+// SupportsFirewallPolicyReportFlow reports whether the controller version models
+// reportFlowEnabled on Official-API firewall policies.
+func (c *Client) SupportsFirewallPolicyReportFlow() bool {
+	return c.Version.GreaterThanOrEqual(ControllerVersionFirewallPolicyReportFlow)
+}
+
 // ControllerVersionValidator is a validator that checks if the UniFi controller version
 // matches the specified constraints.
 type ControllerVersionValidator interface {

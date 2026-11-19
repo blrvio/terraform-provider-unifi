@@ -150,3 +150,12 @@ func TestSupportsOfficialAPI(t *testing.T) {
 	assert.False(t, (&Client{Version: AsVersion("10.1.77")}).SupportsOfficialAPI())
 	assert.False(t, (&Client{Version: AsVersion("9.0.108")}).SupportsOfficialAPI())
 }
+
+func TestSupportsFirewallPolicyReportFlow(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, (&Client{Version: ControllerVersionFirewallPolicyReportFlow}).SupportsFirewallPolicyReportFlow())
+	assert.True(t, (&Client{Version: AsVersion("11.1.0")}).SupportsFirewallPolicyReportFlow())
+	assert.False(t, (&Client{Version: AsVersion("10.6.109")}).SupportsFirewallPolicyReportFlow())
+	assert.False(t, (&Client{Version: AsVersion("10.1.78")}).SupportsFirewallPolicyReportFlow())
+}
