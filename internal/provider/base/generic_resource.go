@@ -85,7 +85,7 @@ func (b *GenericResource[T]) ImportState(ctx context.Context, req resource.Impor
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	id, site := ImportIDWithSite(req, resp)
+	id, site := ImportIDWithOptionalSite(req, resp, b.client.Site)
 	if resp.Diagnostics.HasError() {
 		return
 	}

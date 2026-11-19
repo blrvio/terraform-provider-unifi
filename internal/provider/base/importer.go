@@ -39,3 +39,16 @@ func ImportIDWithSite(req resource.ImportStateRequest, resp *resource.ImportStat
 	resp.Diagnostics.AddError("Invalid ID", "ID does not contain site part. Format should be 'site:id'")
 	return id, ""
 }
+
+// ImportIDWithOptionalSite accepts `site:id` or a bare `id`; a bare id imports into
+// defaultSite (the provider's configured site).
+func ImportIDWithOptionalSite(req resource.ImportStateRequest, resp *resource.ImportStateResponse, defaultSite string) (string, string) {
+	if req.ID != "" && !strings.Contains(req.ID, ":") {
+		if defaultSite == "" {
+			resp.Diagnostics.AddError("Invalid ID", "ID does not contain a site part and the provider has no default site. Format should be 'site:id'")
+			return "", ""
+		}
+		return req.ID, defaultSite
+	}
+	return ImportIDWithSite(req, resp)
+}
