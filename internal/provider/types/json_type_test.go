@@ -99,9 +99,9 @@ func TestCanonicalJSON(t *testing.T) {
 			`{"trafficFilter":{"networkFilter":{"networkIds":["n1"],"matchOpposite":false},"type":"NETWORK"},"zoneId":"z","ipsecFilter":null}`,
 			`{"trafficFilter":{"networkFilter":{"matchOpposite":false,"networkIds":["n1"]},"type":"NETWORK"},"zoneId":"z"}`,
 		},
-		"large int keeps precision": {`{"b":9007199254740993,"a":1.5}`, `{"a":1.5,"b":9007199254740993}`},
+		"large int keeps precision":    {`{"b":9007199254740993,"a":1.5}`, `{"a":1.5,"b":9007199254740993}`},
 		"html escaped like jsonencode": {`{"a":"<x>&"}`, `{"a":"\u003cx\u003e\u0026"}`},
-		"array order kept":            {`[3,1,2]`, `[3,1,2]`},
+		"array order kept":             {`[3,1,2]`, `[3,1,2]`},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
