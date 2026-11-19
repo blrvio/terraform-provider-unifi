@@ -78,7 +78,7 @@ func (r *superIdentityResource) Schema(_ context.Context, _ resource.SchemaReque
 				Optional:            true,
 				Computed:            true,
 				Validators: []validator.String{
-					validators.Hostname(),
+					validators.HostLabelOrFQDN(),
 				},
 			},
 			"name": schema.StringAttribute{

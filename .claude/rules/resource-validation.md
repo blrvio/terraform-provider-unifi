@@ -21,7 +21,7 @@ rules you can't keep in sync. Every validator MUST have a unit test (see "Verify
 - **Never** hand-roll a validator that already exists — reuse from `validators/` (see `shared-code.md`).
 
 ## Reusable validators (`internal/provider/validators/`)
-- Strings: `CIDR()`/`CIDROrEmpty()`, `IPv4()`/`IPv6()`, `URL()`/`HTTPSUrl()`, `Hostname()`,
+- Strings: `CIDR()`/`CIDROrEmpty()`, `IPv4()`/`IPv6()`, `URL()`/`HTTPSUrl()`, `Hostname()` (FQDN), `HostLabelOrFQDN()`,
   `Timezone()`, `CountryCodeAlpha2()`, `StringLengthExactly(n)`. Sets: `UniqueMACs()`.
 - Regex singletons (vars, not funcs): `validators.Mac`, `TimeFormat`, `DateFormat`, `HexColor`,
   `Email`, `PortRangeV2` (+ their `*Regex` sources).

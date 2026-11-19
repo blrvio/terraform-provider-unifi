@@ -234,7 +234,7 @@ func (r *rsyslogdResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Computed:            true,
 				Validators: []validator.String{
 					stringvalidator.Any(
-						validators.Hostname(),
+						validators.HostLabelOrFQDN(),
 						validators.IPv4(),
 					),
 				},

@@ -111,7 +111,7 @@ func (r *ntpResource) ConfigValidators(_ context.Context) []resource.ConfigValid
 func (r *ntpResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	serverValidators := func() []validator.String {
 		return []validator.String{
-			stringvalidator.Any(validators.Hostname(), validators.IPv4()),
+			stringvalidator.Any(validators.HostLabelOrFQDN(), validators.IPv4()),
 		}
 	}
 	resp.Schema = schema.Schema{
