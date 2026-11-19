@@ -157,17 +157,17 @@ func (m *globalSwitchModel) Merge(ctx context.Context, other interface{}) diag.D
 
 	m.ID = types.StringValue(model.ID)
 
-	// types.SetValueFrom maps a nil slice to a null Set; normalize nil to an
-	// empty slice so empty collections round-trip as empty (known) Sets, keeping
-	// the Optional+Computed attributes consistent after apply.
-	deviceIso, d := types.SetValueFrom(ctx, types.StringType, nonNilStrings(model.AclDeviceIsolation))
+	// Empty collections read as null: the attributes require at least one element when
+	// configured (SizeAtLeast(1)), so an empty set in state would produce generated
+	// config that does not validate. They are Optional+Computed, so null round-trips.
+	deviceIso, d := setOrNull(ctx, types.StringType, model.AclDeviceIsolation)
 	diags.Append(d...)
 	m.ACLDeviceIsolation = deviceIso
 
 	// switch_exclusions uses the MACType element type so the state value carries
 	// MACValue elements; that is what lets the framework apply MAC semantic
 	// equality (case/separator-insensitive) and avoid perpetual diffs.
-	switchExcl, d := types.SetValueFrom(ctx, ut.MACType{}, nonNilStrings(model.SwitchExclusions))
+	switchExcl, d := setOrNull(ctx, ut.MACType{}, model.SwitchExclusions)
 	diags.Append(d...)
 	m.SwitchExclusions = switchExcl
 
@@ -180,14 +180,27 @@ func (m *globalSwitchModel) Merge(ctx context.Context, other interface{}) diag.D
 			DestinationNetworks: dest,
 		})
 	}
-	l3Set, d := types.SetValueFrom(ctx, types.ObjectType{AttrTypes: (&aclL3IsolationModel{}).AttributeTypes()}, entries)
-	diags.Append(d...)
-	m.ACLL3Isolation = l3Set
+	l3Type := types.ObjectType{AttrTypes: (&aclL3IsolationModel{}).AttributeTypes()}
+	if len(entries) == 0 {
+		m.ACLL3Isolation = types.SetNull(l3Type)
+	} else {
+		l3Set, d := types.SetValueFrom(ctx, l3Type, entries)
+		diags.Append(d...)
+		m.ACLL3Isolation = l3Set
+	}
 
 	m.JumboframeEnabled = types.BoolValue(model.JumboframeEnabled)
 	m.FlowctrlEnabled = types.BoolValue(model.FlowctrlEnabled)
 
 	return diags
+}
+
+// setOrNull returns a null set for an empty slice, otherwise the set of its values.
+func setOrNull(ctx context.Context, elem attr.Type, s []string) (types.Set, diag.Diagnostics) {
+	if len(s) == 0 {
+		return types.SetNull(elem), nil
+	}
+	return types.SetValueFrom(ctx, elem, s)
 }
 
 // nonNilStrings returns s, or an empty (non-nil) slice when s is nil, so that

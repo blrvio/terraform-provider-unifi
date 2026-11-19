@@ -71,6 +71,13 @@ func (d *ntpModel) Merge(_ context.Context, other interface{}) diag.Diagnostics 
 	d.ID = types.StringValue(model.ID)
 	d.Mode = types.StringValue(model.SettingPreference)
 
+	// In auto mode the controller keeps the last manual servers, but they are not in
+	// use and the schema rejects them with mode = "auto"; report them as null.
+	if model.SettingPreference == "auto" {
+		d.NtpServer1, d.NtpServer2, d.NtpServer3, d.NtpServer4 = types.StringNull(), types.StringNull(), types.StringNull(), types.StringNull()
+		return diags
+	}
+
 	if model.NtpServer1 != "" {
 		d.NtpServer1 = types.StringValue(model.NtpServer1)
 	}

@@ -111,12 +111,13 @@ func (d *rsyslogdModel) Merge(ctx context.Context, other interface{}) diag.Diagn
 	// Only set optional fields if rsyslogd is enabled
 	if model.Enabled {
 		d.Debug = types.BoolValue(model.Debug)
-		d.IP = types.StringValue(model.IP)
+		d.IP = ut.StringOrNull(model.IP)
 		d.LogAllContents = types.BoolValue(model.LogAllContents)
 		d.NetconsoleEnabled = types.BoolValue(model.NetconsoleEnabled)
-		d.NetconsoleHost = types.StringValue(model.NetconsoleHost)
-		d.NetconsolePort = types.Int64Value(int64(model.NetconsolePort))
-		d.Port = types.Int64Value(int64(model.Port))
+		// Unset values come back as ""/0, which the validators reject; report them as null.
+		d.NetconsoleHost = ut.StringOrNull(model.NetconsoleHost)
+		d.NetconsolePort = ut.Int64OrNull(model.NetconsolePort)
+		d.Port = ut.Int64OrNull(model.Port)
 		d.ThisController = types.BoolValue(model.ThisController)
 		d.ThisControllerEncryptedOnly = types.BoolValue(model.ThisControllerEncryptedOnly)
 

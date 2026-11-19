@@ -67,3 +67,24 @@ func TestUsgImportStateSet(t *testing.T) {
 	require.False(t, diags.HasError(), "state.Set: %v", diags)
 	assert.True(t, m.GeoIPFiltering.IsNull())
 }
+
+// G16: values the controller stores but that are unset in effect must read as null,
+// so config generated from an import validates against the schema.
+func TestSettingsMergeUnsetAsNull(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ntp := &ntpModel{}
+	require.False(t, ntp.Merge(ctx, &unifi.SettingNtp{SettingPreference: "auto", NtpServer1: "0.ubnt.pool.ntp.org"}).HasError())
+	assert.True(t, ntp.NtpServer1.IsNull(), "servers are not in use in auto mode")
+	ntp = &ntpModel{}
+	require.False(t, ntp.Merge(ctx, &unifi.SettingNtp{SettingPreference: "manual", NtpServer1: "time.cloudflare.com"}).HasError())
+	assert.Equal(t, "time.cloudflare.com", ntp.NtpServer1.ValueString())
+
+	rs := &rsyslogdModel{}
+	require.False(t, rs.Merge(ctx, &unifi.SettingRsyslogd{Enabled: true, Port: 514}).HasError())
+	assert.True(t, rs.NetconsolePort.IsNull())
+	assert.True(t, rs.NetconsoleHost.IsNull())
+	assert.True(t, rs.IP.IsNull())
+	assert.Equal(t, int64(514), rs.Port.ValueInt64())
+}
