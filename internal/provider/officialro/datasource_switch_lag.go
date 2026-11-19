@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -57,7 +57,7 @@ func (d *switchLAGDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 				Required:            true,
 			},
 			"type": schema.StringAttribute{
-				MarkdownDescription: "The LAG type (e.g. `LOCAL`, `MC_LAG`, `SWITCH_STACK`).",
+				MarkdownDescription: lagTypeDescription,
 				Computed:            true,
 			},
 			"metadata_origin": schema.StringAttribute{
@@ -65,8 +65,10 @@ func (d *switchLAGDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 				Computed:            true,
 			},
 			"members_json": schema.StringAttribute{
-				MarkdownDescription: "The LAG members (device id and aggregated port indexes) serialized as a JSON string.",
-				Computed:            true,
+				MarkdownDescription: "The LAG members serialized as a JSON string, in the shape of the LAG's variant: " +
+					"`deviceId`/`portIdxs` for `LOCAL` and `MULTI_CHASSIS`, `unitId`/`unitMacAddress`/`portIdxs` for " +
+					"`SWITCH_STACK`. `[]` when the controller reports none or the LAG type is not recognized.",
+				Computed: true,
 			},
 			"json": schema.StringAttribute{
 				MarkdownDescription: "The full LAG details, including type-specific fields, serialized as a JSON string.",
@@ -116,9 +118,9 @@ func (d *switchLAGDataSource) Read(ctx context.Context, req datasource.ReadReque
 		resp.Diagnostics.AddError("Error serializing switch LAG", err.Error())
 		return
 	}
-	members, err := json.Marshal(lag.Members)
-	if err != nil {
-		resp.Diagnostics.AddError("Error serializing switch LAG members", err.Error())
+	_, members, diags := lagMembers(*lag)
+	resp.Diagnostics.Append(diags...)
+	if diags.HasError() {
 		return
 	}
 
@@ -126,7 +128,7 @@ func (d *switchLAGDataSource) Read(ctx context.Context, req datasource.ReadReque
 	state.ID = types.StringValue(lag.Id.String())
 	state.Type = types.StringValue(lag.Type)
 	state.MetadataOrigin = types.StringValue(lag.Metadata.Origin)
-	state.MembersJSON = types.StringValue(string(members))
+	state.MembersJSON = types.StringValue(members)
 	state.JSON = types.StringValue(string(raw))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

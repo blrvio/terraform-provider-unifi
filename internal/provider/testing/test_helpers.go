@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"

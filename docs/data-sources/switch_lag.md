@@ -13,8 +13,15 @@ Retrieves a switch link-aggregation group (LAG) via the UniFi **Official API** (
 ## Example Usage
 
 ```terraform
+# Fetch a single switch link-aggregation group (LAG) by its UUID (Official API).
 data "unifi_switch_lag" "uplink" {
   id = "00000000-0000-0000-0000-000000000000"
+}
+
+# members_json follows the LAG variant: deviceId/portIdxs for LOCAL and
+# MULTI_CHASSIS, unitId/unitMacAddress/portIdxs for SWITCH_STACK.
+output "uplink_members" {
+  value = jsondecode(data.unifi_switch_lag.uplink.members_json)
 }
 ```
 
@@ -32,6 +39,6 @@ data "unifi_switch_lag" "uplink" {
 ### Read-Only
 
 - `json` (String) The full LAG details, including type-specific fields, serialized as a JSON string.
-- `members_json` (String) The LAG members (device id and aggregated port indexes) serialized as a JSON string.
+- `members_json` (String) The LAG members serialized as a JSON string, in the shape of the LAG's variant: `deviceId`/`portIdxs` for `LOCAL` and `MULTI_CHASSIS`, `unitId`/`unitMacAddress`/`portIdxs` for `SWITCH_STACK`. `[]` when the controller reports none or the LAG type is not recognized.
 - `metadata_origin` (String) The origin of the LAG entity (e.g. `USER_DEFINED`).
-- `type` (String) The LAG type (e.g. `LOCAL`, `MC_LAG`, `SWITCH_STACK`).
+- `type` (String) The LAG type: `LOCAL` (ports on one switch), `MULTI_CHASSIS` (MC-LAG across two switches) or `SWITCH_STACK` (ports across units of a switch stack).

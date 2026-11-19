@@ -2,10 +2,12 @@ package officialro
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/blrvio/go-unifi/v10/unifi/official"
+	"github.com/blrvio/go-unifi/v11/unifi/official"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	dschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -155,37 +157,151 @@ func TestMapNetworkReferences(t *testing.T) {
 	}
 }
 
-func TestMapLagDetails_members(t *testing.T) {
-	dev := mustUUID(t, "44444444-4444-4444-4444-444444444444")
-	m, err := mapLagDetails(official.LAGDetails{
-		Id:      mustUUID(t, "55555555-5555-5555-5555-555555555555"),
-		Type:    "LOCAL",
-		Members: []official.LagMember{{DeviceId: dev, PortIdxs: []int32{1, 2, 3}}},
-	})
-	if err != nil {
-		t.Fatalf("mapLagDetails: %v", err)
+// mustLAG decodes an Official-API LAG payload the way the SDK does on a real
+// read, so the union variant (and its members) is populated exactly as in
+// production rather than through the SDK's From* setters.
+func mustLAG(t *testing.T, payload string) official.LAGDetails {
+	t.Helper()
+	var l official.LAGDetails
+	if err := json.Unmarshal([]byte(payload), &l); err != nil {
+		t.Fatalf("decode LAG payload: %v", err)
 	}
-	if len(m.Members) != 1 || m.Members[0].DeviceID.ValueString() != dev.String() {
+	return l
+}
+
+const (
+	lagID    = "55555555-5555-5555-5555-555555555555"
+	lagDevID = "44444444-4444-4444-4444-444444444444"
+	lagMeta  = `"metadata":{"origin":"USER_DEFINED"}`
+)
+
+func TestMapLagDetails_local(t *testing.T) {
+	m, diags := mapLagDetails(mustLAG(t, `{"id":"`+lagID+`","type":"LOCAL",`+lagMeta+
+		`,"members":[{"deviceId":"`+lagDevID+`","portIdxs":[1,2,3]}]}`))
+	if diags.HasError() || diags.WarningsCount() > 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if m.Type.ValueString() != "LOCAL" || m.MetadataOrigin.ValueString() != "USER_DEFINED" {
+		t.Fatalf("scalar mapping: %+v", m)
+	}
+	if len(m.Members) != 1 || m.Members[0].DeviceID.ValueString() != lagDevID {
 		t.Fatalf("members = %+v", m.Members)
+	}
+	if !m.Members[0].UnitID.IsNull() || !m.Members[0].UnitMacAddress.IsNull() {
+		t.Fatalf("unit fields must be null outside a switch stack: %+v", m.Members[0])
 	}
 	if len(m.Members[0].PortIdxs) != 3 || m.Members[0].PortIdxs[2] != 3 {
 		t.Fatalf("port idxs = %v", m.Members[0].PortIdxs)
 	}
 }
 
-func TestMapSwitchStack_members(t *testing.T) {
-	a := mustUUID(t, "66666666-6666-6666-6666-666666666666")
-	b := mustUUID(t, "77777777-7777-7777-7777-777777777777")
+func TestMapLagDetails_multiChassisNilMembers(t *testing.T) {
+	l := mustLAG(t, `{"id":"`+lagID+`","type":"MULTI_CHASSIS",`+lagMeta+`}`)
+	m, diags := mapLagDetails(l)
+	if diags.HasError() || diags.WarningsCount() > 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if m.Members == nil || len(m.Members) != 0 {
+		t.Fatalf("expected an empty (non-nil) member list, got %#v", m.Members)
+	}
+	_, membersJSON, diags := lagMembers(l)
+	if diags.HasError() || membersJSON != "[]" {
+		t.Fatalf("members_json = %q (diags %v)", membersJSON, diags)
+	}
+}
+
+func TestMapLagDetails_switchStack(t *testing.T) {
+	l := mustLAG(t, `{"id":"`+lagID+`","type":"SWITCH_STACK",`+lagMeta+
+		`,"switchStackId":"88888888-8888-8888-8888-888888888888"`+
+		`,"members":[{"unitId":2,"unitMacAddress":"aa:bb:cc:dd:ee:02","portIdxs":[25,26]}]}`)
+	m, diags := mapLagDetails(l)
+	if diags.HasError() || diags.WarningsCount() > 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if len(m.Members) != 1 {
+		t.Fatalf("members = %+v", m.Members)
+	}
+	got := m.Members[0]
+	if !got.DeviceID.IsNull() {
+		t.Fatalf("device_id must be null for a switch-stack member (never the zero UUID), got %q", got.DeviceID.ValueString())
+	}
+	if got.UnitID.ValueInt64() != 2 || got.UnitMacAddress.ValueString() != "aa:bb:cc:dd:ee:02" {
+		t.Fatalf("unit mapping: %+v", got)
+	}
+	if len(got.PortIdxs) != 2 || got.PortIdxs[0] != 25 {
+		t.Fatalf("port idxs = %v", got.PortIdxs)
+	}
+	_, membersJSON, _ := lagMembers(l)
+	if membersJSON != `[{"portIdxs":[25,26],"unitId":2,"unitMacAddress":"aa:bb:cc:dd:ee:02"}]` {
+		t.Fatalf("members_json = %s", membersJSON)
+	}
+	if !strings.Contains(m.JSON.ValueString(), `"switchStackId":"88888888-8888-8888-8888-888888888888"`) {
+		t.Fatalf("json must keep the variant fields: %s", m.JSON.ValueString())
+	}
+}
+
+func TestMapLagDetails_unknownTypeWarns(t *testing.T) {
+	l := mustLAG(t, `{"id":"`+lagID+`","type":"FUTURE_KIND",`+lagMeta+`,"members":[{"x":1}]}`)
+	m, diags := mapLagDetails(l)
+	if diags.HasError() {
+		t.Fatalf("an unknown LAG type must not fail the read: %v", diags)
+	}
+	if diags.WarningsCount() != 1 {
+		t.Fatalf("expected exactly one warning, got %v", diags)
+	}
+	if m.Members == nil || len(m.Members) != 0 || m.Type.ValueString() != "FUTURE_KIND" {
+		t.Fatalf("unexpected mapping: %+v", m)
+	}
+	if _, membersJSON, _ := lagMembers(l); membersJSON != "[]" {
+		t.Fatalf("members_json = %q", membersJSON)
+	}
+}
+
+func TestMapSwitchStack_units(t *testing.T) {
+	dev := mustUUID(t, "66666666-6666-6666-6666-666666666666")
+	role := official.SwitchStackUnitRole("ACTIVE_CONTROLLER")
+	order := int32(1)
 	m, err := mapSwitchStack(official.SwitchStack{
-		Id:      mustUUID(t, "88888888-8888-8888-8888-888888888888"),
-		Name:    "stack-1",
-		Members: []official.SwitchStackMember{{DeviceId: a}, {DeviceId: b}},
+		Id:       mustUUID(t, "88888888-8888-8888-8888-888888888888"),
+		Name:     "stack-1",
+		DeviceId: &dev,
+		Units: []official.SwitchStackUnit{
+			{Id: 1, MacAddress: "aa:bb:cc:dd:ee:01", Role: &role, Order: &order},
+			{Id: 2, MacAddress: "aa:bb:cc:dd:ee:02"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("mapSwitchStack: %v", err)
 	}
-	if len(m.MemberDeviceIDs) != 2 || m.MemberDeviceIDs[0] != a.String() || m.MemberDeviceIDs[1] != b.String() {
-		t.Fatalf("member ids = %v", m.MemberDeviceIDs)
+	if m.DeviceID.ValueString() != dev.String() {
+		t.Fatalf("device_id = %q", m.DeviceID.ValueString())
+	}
+	if len(m.Units) != 2 {
+		t.Fatalf("units = %+v", m.Units)
+	}
+	first, second := m.Units[0], m.Units[1]
+	if first.ID.ValueInt64() != 1 || first.MacAddress.ValueString() != "aa:bb:cc:dd:ee:01" ||
+		first.Role.ValueString() != "ACTIVE_CONTROLLER" || first.Order.ValueInt64() != 1 {
+		t.Fatalf("first unit = %+v", first)
+	}
+	if second.ID.ValueInt64() != 2 || !second.Role.IsNull() || !second.Order.IsNull() {
+		t.Fatalf("absent role/order must be null: %+v", second)
+	}
+	if !strings.Contains(m.JSON.ValueString(), `"units":[`) || !strings.Contains(m.JSON.ValueString(), `"deviceId":"`+dev.String()) {
+		t.Fatalf("json must include units and deviceId: %s", m.JSON.ValueString())
+	}
+}
+
+func TestMapSwitchStack_noDeviceNoUnits(t *testing.T) {
+	m, err := mapSwitchStack(official.SwitchStack{Id: mustUUID(t, "88888888-8888-8888-8888-888888888888"), Name: "s"})
+	if err != nil {
+		t.Fatalf("mapSwitchStack: %v", err)
+	}
+	if !m.DeviceID.IsNull() {
+		t.Fatalf("absent deviceId must be null, got %q", m.DeviceID.ValueString())
+	}
+	if m.Units == nil || len(m.Units) != 0 {
+		t.Fatalf("expected an empty (non-nil) unit list, got %#v", m.Units)
 	}
 }
 
@@ -214,9 +330,11 @@ func TestStateRoundTrips(t *testing.T) {
 	pending, _ := mapPendingDevice(official.DevicePendingAdoption{MacAddress: "a", Features: []official.DevicePendingAdoptionFeatures{"gateway"}})
 	network, _ := mapNetworkOverview(official.NetworkOverview{Id: id, Name: "lan"})
 	refs, _ := mapNetworkReferences(official.NetworkReferences{ReferenceResources: []official.NetworkReferenceResource{{ResourceType: "CLIENT", ReferenceCount: 1}}})
-	lag, _ := mapLagDetails(official.LAGDetails{Id: id, Type: "LOCAL", Members: []official.LagMember{{DeviceId: id, PortIdxs: []int32{1}}}})
+	lag, _ := mapLagDetails(mustLAG(t, `{"id":"`+id.String()+`","type":"LOCAL",`+lagMeta+`,"members":[{"deviceId":"`+id.String()+`","portIdxs":[1]}]}`))
+	stackLag, _ := mapLagDetails(mustLAG(t, `{"id":"`+id.String()+`","type":"SWITCH_STACK",`+lagMeta+`,"members":[{"unitId":1,"unitMacAddress":"a","portIdxs":[1]}]}`))
 	dom, _ := mapMcLagDomain(official.McLagDomain{Id: id, Name: "d"})
-	stack, _ := mapSwitchStack(official.SwitchStack{Id: id, Name: "s", Members: []official.SwitchStackMember{{DeviceId: id}}})
+	role := official.SwitchStackUnitRole("MEMBER")
+	stack, _ := mapSwitchStack(official.SwitchStack{Id: id, Name: "s", DeviceId: &id, Units: []official.SwitchStackUnit{{Id: 1, MacAddress: "a", Role: &role}, {Id: 2, MacAddress: "b"}}})
 
 	cases := []struct {
 		name  string
@@ -235,11 +353,12 @@ func TestStateRoundTrips(t *testing.T) {
 		{"dpi_categories", NewDPIApplicationCategoriesDataSource(), &dpiApplicationCategoriesModel{Categories: []dpiCatalogEntry{mapDPICategory(official.DPICategory{Id: 1, Name: "a"})}}},
 		{"countries", NewCountriesDataSource(), &countriesModel{Countries: []countryEntry{mapCountry(official.CountryDefinition{Code: "BR", Name: "Brazil"})}}},
 		{"radius_profiles", NewRadiusProfilesDataSource(), &radiusProfilesModel{Profiles: []radiusProfileOverviewModel{mapRadiusProfile(official.RadiusProfileOverview{Id: id, Name: "r"})}}},
-		{"switch_lags", NewSwitchLAGsDataSource(), &switchLAGsModel{LAGs: []lagDetailsModel{lag}}},
+		{"switch_lags", NewSwitchLAGsDataSource(), &switchLAGsModel{LAGs: []lagDetailsModel{lag, stackLag}}},
+		{"switch_lag", NewSwitchLAGDataSource(), &switchLAGModel{ID: lag.ID, Type: lag.Type, MetadataOrigin: lag.MetadataOrigin, MembersJSON: lag.JSON, JSON: lag.JSON}},
 		{"mclag_domains", NewMcLagDomainsDataSource(), &mcLagDomainsModel{Domains: []mcLagDomainItem{dom}}},
 		{"mclag_domain", NewMcLagDomainDataSource(), &mcLagDomainModel{ID: dom.ID, Name: dom.Name, MetadataOrigin: dom.MetadataOrigin, JSON: dom.JSON}},
 		{"switch_stacks", NewSwitchStacksDataSource(), &switchStacksModel{Stacks: []switchStackItem{stack}}},
-		{"switch_stack", NewSwitchStackDataSource(), &switchStackModel{ID: stack.ID, Name: stack.Name, MetadataOrigin: stack.MetadataOrigin, MemberDeviceIDs: stack.MemberDeviceIDs, JSON: stack.JSON}},
+		{"switch_stack", NewSwitchStackDataSource(), &switchStackModel{ID: stack.ID, Name: stack.Name, MetadataOrigin: stack.MetadataOrigin, DeviceID: stack.DeviceID, Units: stack.Units, JSON: stack.JSON}},
 		{"controller_info", NewControllerInfoDataSource(), &controllerInfoModel{}},
 	}
 	for _, tc := range cases {

@@ -33,11 +33,14 @@ resource "unifi_official_firewall_policy" "allow_iot_to_wan" {
   })
 }
 
-# A logging BLOCK policy that only matches new/invalid connections.
+# A logging BLOCK policy that only matches new/invalid connections. Its matches
+# are kept out of Insights Flows (report_flow_enabled requires controller 11.0.99+;
+# when omitted, the controller default `true` applies).
 resource "unifi_official_firewall_policy" "block_invalid" {
   name                    = "block-invalid"
   action                  = "BLOCK"
   logging_enabled         = true
+  report_flow_enabled     = false
   description             = "Drop new and invalid connections."
   connection_state_filter = ["NEW", "INVALID"]
 
@@ -72,6 +75,7 @@ resource "unifi_official_firewall_policy" "block_invalid" {
 - `enabled` (Boolean) Whether the firewall policy is enabled. Defaults to `true`.
 - `ipsec_filter` (String) Match on traffic encrypted, or not encrypted by IPsec. One of `MATCH_ENCRYPTED`, `MATCH_NOT_ENCRYPTED`. If unset, matches all traffic.
 - `logging_enabled` (Boolean) Generate syslog entries when traffic is matched. Defaults to `false`.
+- `report_flow_enabled` (Boolean) Report traffic matched by this policy in Insights Flows. Requires a controller running 11.0.99 or later; on older controllers it cannot be set and is always null. When omitted on create the controller default (`true`) is used and read back; from then on the value in state is sent on every update, so a policy with reporting turned off is not switched back on. Removing the attribute from the configuration keeps the last known value.
 - `schedule` (String) JSON-encoded firewall schedule object. If unset, the policy is always active.
 - `site` (String) The name of the UniFi site where this resource should be applied. If not specified, the default site will be used.
 

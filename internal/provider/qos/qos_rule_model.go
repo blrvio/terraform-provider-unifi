@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"

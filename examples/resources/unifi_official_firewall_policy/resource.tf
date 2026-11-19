@@ -18,11 +18,14 @@ resource "unifi_official_firewall_policy" "allow_iot_to_wan" {
   })
 }
 
-# A logging BLOCK policy that only matches new/invalid connections.
+# A logging BLOCK policy that only matches new/invalid connections. Its matches
+# are kept out of Insights Flows (report_flow_enabled requires controller 11.0.99+;
+# when omitted, the controller default `true` applies).
 resource "unifi_official_firewall_policy" "block_invalid" {
   name                    = "block-invalid"
   action                  = "BLOCK"
   logging_enabled         = true
+  report_flow_enabled     = false
   description             = "Drop new and invalid connections."
   connection_state_filter = ["NEW", "INVALID"]
 

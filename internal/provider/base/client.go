@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"

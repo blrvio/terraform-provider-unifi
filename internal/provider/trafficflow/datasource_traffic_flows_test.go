@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"

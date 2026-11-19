@@ -5,10 +5,18 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/blrvio/go-unifi/v10/unifi/official"
+	"github.com/blrvio/go-unifi/v11/unifi/official"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 )
 
 // listOfStrings builds a Framework list value from the given strings for tests.
@@ -246,4 +254,153 @@ func TestFirewallPolicyOrderMerge_InvalidType(t *testing.T) {
 	m := &officialFirewallPolicyOrderModel{}
 	diags := m.Merge(context.Background(), "not an ordering")
 	assert.True(t, diags.HasError(), "expected error for wrong type")
+}
+
+// ---- Policy: report_flow_enabled ----
+
+// basePolicyModel is a minimal valid policy model for body-building tests.
+func basePolicyModel() *officialFirewallPolicyModel {
+	return &officialFirewallPolicyModel{
+		Name:            types.StringValue("p"),
+		Action:          types.StringValue(firewallPolicyActionAllow),
+		Source:          types.StringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
+		Destination:     types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope: types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+	}
+}
+
+// policyWireBody builds the request body for m and returns it decoded as a map,
+// i.e. exactly the JSON keys the controller receives.
+func policyWireBody(t *testing.T, m *officialFirewallPolicyModel) (*official.FirewallPolicyCreateOrUpdate, map[string]any) {
+	t.Helper()
+	body, diags := m.AsUnifiModel(context.Background())
+	require.False(t, diags.HasError(), "AsUnifiModel diagnostics: %v", diags)
+	b, diags := asFirewallPolicyBody(body)
+	require.False(t, diags.HasError(), "asFirewallPolicyBody diagnostics: %v", diags)
+	raw, err := json.Marshal(b)
+	require.NoError(t, err)
+	out := map[string]any{}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	return b, out
+}
+
+func TestFirewallPolicyAsUnifiModel_ReportFlowOmitted(t *testing.T) {
+	t.Parallel()
+	for name, v := range map[string]types.Bool{
+		"unknown (create without the attribute)": types.BoolUnknown(),
+		"null (older controller state)":          types.BoolNull(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := basePolicyModel()
+			m.ReportFlowEnabled = v
+			b, wire := policyWireBody(t, m)
+			assert.Nil(t, b.ReportFlowEnabled)
+			_, present := wire["reportFlowEnabled"]
+			assert.False(t, present, "reportFlowEnabled must be omitted so the controller applies its default")
+		})
+	}
+}
+
+// reportFlowAttr returns the report_flow_enabled schema attribute.
+func reportFlowAttr(t *testing.T) schema.BoolAttribute {
+	t.Helper()
+	r, ok := NewOfficialFirewallPolicyResource().(*officialFirewallPolicyResource)
+	require.True(t, ok)
+	var resp resource.SchemaResponse
+	r.Schema(context.Background(), resource.SchemaRequest{}, &resp)
+	require.False(t, resp.Diagnostics.HasError(), "schema diagnostics: %v", resp.Diagnostics)
+	attr, ok := resp.Schema.Attributes["report_flow_enabled"].(schema.BoolAttribute)
+	require.True(t, ok, "report_flow_enabled must be a bool attribute")
+	return attr
+}
+
+func TestFirewallPolicySchema_ReportFlowOptionalComputed(t *testing.T) {
+	t.Parallel()
+	attr := reportFlowAttr(t)
+	assert.True(t, attr.Optional)
+	assert.True(t, attr.Computed)
+	assert.Nil(t, attr.Default, "no static default: the controller default applies on create")
+	assert.Len(t, attr.PlanModifiers, 1)
+}
+
+// TestFirewallPolicyUpdate_ReportFlowFalsePreserved is the regression guard for
+// the silent re-enable: with report_flow_enabled unset in config and false in
+// state, the plan must carry false (UseStateForUnknown) and the full-replace PUT
+// must send reportFlowEnabled=false instead of omitting it (which the controller
+// treats as true).
+func TestFirewallPolicyUpdate_ReportFlowFalsePreserved(t *testing.T) {
+	t.Parallel()
+	attr := reportFlowAttr(t)
+
+	// A non-null prior state marks this as an update (UseStateForUnknown is a
+	// no-op on create); only its nullness matters to the modifier.
+	req := planmodifier.BoolRequest{
+		State:       tfsdk.State{Raw: tftypes.NewValue(tftypes.Object{}, map[string]tftypes.Value{})},
+		Path:        path.Root("report_flow_enabled"),
+		ConfigValue: types.BoolNull(),
+		PlanValue:   types.BoolUnknown(),
+		StateValue:  types.BoolValue(false),
+	}
+	resp := &planmodifier.BoolResponse{PlanValue: req.PlanValue}
+	for _, pm := range attr.PlanModifiers {
+		pm.PlanModifyBool(context.Background(), req, resp)
+	}
+	require.False(t, resp.Diagnostics.HasError())
+	require.True(t, resp.PlanValue.Equal(types.BoolValue(false)), "plan = %s", resp.PlanValue)
+
+	m := basePolicyModel()
+	m.ReportFlowEnabled = resp.PlanValue
+	b, wire := policyWireBody(t, m)
+	require.NotNil(t, b.ReportFlowEnabled)
+	assert.False(t, *b.ReportFlowEnabled)
+	assert.Equal(t, false, wire["reportFlowEnabled"])
+
+	// An explicit true in config is sent as true.
+	m.ReportFlowEnabled = types.BoolValue(true)
+	_, wire = policyWireBody(t, m)
+	assert.Equal(t, true, wire["reportFlowEnabled"])
+}
+
+func TestFirewallPolicyMerge_ReportFlow(t *testing.T) {
+	t.Parallel()
+	for _, want := range []bool{true, false} {
+		raw := `{"id":"66666666-6666-6666-6666-666666666666","name":"p","action":{"type":"ALLOW"},` +
+			`"enabled":true,"loggingEnabled":false,"index":1,` +
+			`"reportFlowEnabled":` + map[bool]string{true: "true", false: "false"}[want] + `,` +
+			`"source":{"zoneId":"11111111-1111-1111-1111-111111111111"},` +
+			`"destination":{"zoneId":"22222222-2222-2222-2222-222222222222"},` +
+			`"ipProtocolScope":{"ipVersion":"BOTH","type":"ALL"},"metadata":{}}`
+		var policy official.FirewallPolicy
+		require.NoError(t, json.Unmarshal([]byte(raw), &policy))
+
+		m := &officialFirewallPolicyModel{}
+		diags := m.Merge(context.Background(), &policy)
+		require.False(t, diags.HasError(), "Merge diagnostics: %v", diags)
+		assert.True(t, m.ReportFlowEnabled.Equal(types.BoolValue(want)), "report_flow_enabled = %s, want %v", m.ReportFlowEnabled, want)
+	}
+}
+
+// TestFirewallPolicy_ReportFlowGatedByControllerVersion covers controllers that
+// predate reportFlowEnabled (< 11.0.99): the field is never sent and the
+// attribute stays null rather than a meaningless false.
+func TestFirewallPolicy_ReportFlowGatedByControllerVersion(t *testing.T) {
+	t.Parallel()
+	for version, supported := range map[string]bool{"10.6.109": false, "11.0.99": true} {
+		t.Run(version, func(t *testing.T) {
+			t.Parallel()
+			r, ok := NewOfficialFirewallPolicyResource().(*officialFirewallPolicyResource)
+			require.True(t, ok)
+			r.SetClient(&base.Client{Version: base.AsVersion(version)})
+
+			v := false
+			body := &official.FirewallPolicyCreateOrUpdate{ReportFlowEnabled: &v}
+			r.dropUnsupportedReportFlow(body)
+			assert.Equal(t, supported, body.ReportFlowEnabled != nil)
+
+			m := &officialFirewallPolicyModel{ReportFlowEnabled: types.BoolValue(false)}
+			r.nullUnsupportedReportFlow(m)
+			assert.Equal(t, !supported, m.ReportFlowEnabled.IsNull())
+		})
+	}
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blrvio/go-unifi/v10/unifi/official"
+	"github.com/blrvio/go-unifi/v11/unifi/official"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
