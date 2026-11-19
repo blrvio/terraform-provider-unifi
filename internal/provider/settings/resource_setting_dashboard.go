@@ -159,6 +159,7 @@ func NewDashboardResource() resource.Resource {
 	r := &dashboardResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_dashboard",
+		unifi.SettingDashboardKey,
 		func() *dashboardModel { return &dashboardModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingDashboard(ctx, site)

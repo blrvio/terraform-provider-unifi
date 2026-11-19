@@ -172,6 +172,7 @@ func NewSuperCloudaccessResource() resource.Resource {
 	r := &superCloudaccessResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_super_cloudaccess",
+		unifi.SettingSuperCloudaccessKey,
 		func() *superCloudaccessModel { return &superCloudaccessModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSuperCloudaccess(ctx, site)

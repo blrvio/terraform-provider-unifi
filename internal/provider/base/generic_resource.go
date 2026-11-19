@@ -23,6 +23,12 @@ type ResourceFunctions struct {
 	// immediate post-create GET may 404). Defaults to false, which preserves
 	// the historical behavior of merging the write echo for all resources.
 	ReadAfterWrite bool
+
+	// ResolveUnknownsFromState, when true, makes Update build the request body from
+	// the plan with its unknown values (unset Optional+Computed attributes) replaced
+	// by the prior state, so an update never sends them as zero values. Used by the
+	// singleton settings, whose PUT replaces the whole object.
+	ResolveUnknownsFromState bool
 }
 
 // GenericResource provides common functionality for all resources.
@@ -202,7 +208,15 @@ func (b *GenericResource[T]) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	body, diags := plan.AsUnifiModel(ctx)
+	bodyModel := plan
+	if b.Handlers.ResolveUnknownsFromState {
+		bodyModel = b.modelFactory()
+		resp.Diagnostics.Append(getPlanResolvingUnknowns(ctx, req.Plan, req.State, bodyModel)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+	body, diags := bodyModel.AsUnifiModel(ctx)
 	if diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return

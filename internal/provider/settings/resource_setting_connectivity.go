@@ -78,6 +78,7 @@ func NewConnectivityResource() resource.Resource {
 	r := &connectivityResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_connectivity",
+		unifi.SettingConnectivityKey,
 		func() *connectivityModel { return &connectivityModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingConnectivity(ctx, site)

@@ -130,6 +130,7 @@ func NewBaresipResource() resource.Resource {
 	r := &baresipResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_baresip",
+		unifi.SettingBaresipKey,
 		func() *baresipModel { return &baresipModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingBaresip(ctx, site)

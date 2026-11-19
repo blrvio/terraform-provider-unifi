@@ -1593,6 +1593,7 @@ func NewGuestAccessResource() resource.Resource {
 	r := &guestAccessResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_guest_access",
+		unifi.SettingGuestAccessKey,
 		func() *guestAccessModel { return &guestAccessModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingGuestAccess(ctx, site)

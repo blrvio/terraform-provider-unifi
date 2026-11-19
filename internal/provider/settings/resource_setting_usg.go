@@ -1204,6 +1204,7 @@ func NewUsgResource() resource.Resource {
 	r := &usgResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_usg",
+		unifi.SettingUsgKey,
 		func() *usgModel { return &usgModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingUsg(ctx, site)

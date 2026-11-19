@@ -169,6 +169,7 @@ func NewNtpResource() resource.Resource {
 	r := &ntpResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_ntp",
+		unifi.SettingNtpKey,
 		func() *ntpModel { return &ntpModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingNtp(ctx, site)

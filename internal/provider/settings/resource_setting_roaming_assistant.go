@@ -114,6 +114,7 @@ func NewRoamingAssistantResource() resource.Resource {
 	r := &roamingAssistantResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_roaming_assistant",
+		unifi.SettingRoamingAssistantKey,
 		func() *roamingAssistantModel { return &roamingAssistantModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingRoamingAssistant(ctx, site)

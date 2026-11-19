@@ -117,6 +117,7 @@ func NewGlobalNatResource() resource.Resource {
 	r := &globalNatResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_global_nat",
+		unifi.SettingGlobalNatKey,
 		func() *globalNatModel { return &globalNatModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingGlobalNat(ctx, site)

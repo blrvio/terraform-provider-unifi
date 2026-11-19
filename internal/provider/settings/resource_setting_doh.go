@@ -180,6 +180,7 @@ func NewDohResource() resource.Resource {
 	r := &dohResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_doh",
+		unifi.SettingDohKey,
 		func() *dohModel { return &dohModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingDoh(ctx, site)

@@ -74,6 +74,7 @@ func NewMagicSiteToSiteVpnResource() resource.Resource {
 	r := &magicSiteToSiteVpnResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_magic_site_to_site_vpn",
+		unifi.SettingMagicSiteToSiteVpnKey,
 		func() *magicSiteToSiteVpnModel { return &magicSiteToSiteVpnModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingMagicSiteToSiteVpn(ctx, site)

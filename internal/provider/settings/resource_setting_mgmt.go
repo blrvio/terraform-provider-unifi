@@ -176,6 +176,7 @@ func NewMgmtResource() resource.Resource {
 	return &mgmtResource{
 		GenericResource: NewSettingResource(
 			"unifi_setting_mgmt",
+			unifi.SettingMgmtKey,
 			func() *mgmtModel { return &mgmtModel{} },
 			func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 				return client.GetSettingMgmt(ctx, site)

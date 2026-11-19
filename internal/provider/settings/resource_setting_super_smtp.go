@@ -193,6 +193,7 @@ func NewSuperSMTPResource() resource.Resource {
 	r := &superSMTPResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_super_smtp",
+		unifi.SettingSuperSmtpKey,
 		func() *superSMTPModel { return &superSMTPModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSuperSmtp(ctx, site)

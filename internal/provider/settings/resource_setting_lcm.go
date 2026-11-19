@@ -141,6 +141,7 @@ func NewLcmResource() resource.Resource {
 	r := &lcmResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_lcd_monitor",
+		unifi.SettingLcmKey,
 		func() *lcmModel { return &lcmModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingLcm(ctx, site)

@@ -109,6 +109,7 @@ func NewSuperFwupdateResource() resource.Resource {
 	r := &superFwupdateResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_super_fwupdate",
+		unifi.SettingSuperFwupdateKey,
 		func() *superFwupdateModel { return &superFwupdateModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingSuperFwupdate(ctx, site)

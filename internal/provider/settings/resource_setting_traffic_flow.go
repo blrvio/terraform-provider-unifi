@@ -103,6 +103,7 @@ func NewTrafficFlowResource() resource.Resource {
 	r := &trafficFlowResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_traffic_flow",
+		unifi.SettingTrafficFlowKey,
 		func() *trafficFlowModel { return &trafficFlowModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingTrafficFlow(ctx, site)

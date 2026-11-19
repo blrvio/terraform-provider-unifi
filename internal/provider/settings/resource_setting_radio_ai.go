@@ -520,6 +520,7 @@ func NewRadioAiResource() resource.Resource {
 	r := &radioAiResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_radio_ai",
+		unifi.SettingRadioAiKey,
 		func() *radioAiModel { return &radioAiModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingRadioAi(ctx, site)

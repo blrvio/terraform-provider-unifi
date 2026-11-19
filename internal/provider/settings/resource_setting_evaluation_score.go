@@ -97,6 +97,7 @@ func NewEvaluationScoreResource() resource.Resource {
 	r := &evaluationScoreResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_evaluation_score",
+		unifi.SettingEvaluationScoreKey,
 		func() *evaluationScoreModel { return &evaluationScoreModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingEvaluationScore(ctx, site)

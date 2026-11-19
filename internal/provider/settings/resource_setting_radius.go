@@ -135,7 +135,7 @@ func resourceSettingRadiusCreate(ctx context.Context, d *schema.ResourceData, me
 		site = c.Site
 	}
 
-	resp, err := c.UpdateSettingRadius(ctx, site, req)
+	resp, err := writeSettingRadius(ctx, c, site, req)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -210,10 +210,38 @@ func resourceSettingRadiusUpdate(ctx context.Context, d *schema.ResourceData, me
 		site = c.Site
 	}
 
-	resp, err := c.UpdateSettingRadius(ctx, site, req)
+	resp, err := writeSettingRadius(ctx, c, site, req)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
 	return resourceSettingRadiusSetResourceData(resp, d, site)
+}
+
+// writeSettingRadius is the read-modify-write PUT of the radius setting: it keeps the
+// fields the schema does not model and the console's configure_whole_network, which
+// the typed request always sets to true.
+func writeSettingRadius(ctx context.Context, c *base.Client, site string, req *unifi.SettingRadius) (*unifi.SettingRadius, error) {
+	current, err := currentSettingDocument(ctx, c.Client, site, unifi.SettingRadiusKey)
+	if err != nil {
+		return nil, err
+	}
+	if current == nil {
+		return c.UpdateSettingRadius(ctx, site, req)
+	}
+	merged, err := overlaySettingDocument(current, req, unifi.SettingRadiusKey)
+	if err != nil {
+		return nil, err
+	}
+	if v, ok := current["configure_whole_network"]; ok {
+		merged["configure_whole_network"] = v
+	}
+	res, err := c.SetSetting(ctx, site, unifi.SettingRadiusKey, merged)
+	if err != nil && !errors.Is(err, unifi.ErrNotFound) {
+		return nil, err
+	}
+	if typed, ok := res.(*unifi.SettingRadius); ok && typed != nil {
+		return typed, nil
+	}
+	return c.GetSettingRadius(ctx, site)
 }

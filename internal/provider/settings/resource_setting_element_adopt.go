@@ -119,6 +119,7 @@ func NewElementAdoptResource() resource.Resource {
 	r := &elementAdoptResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_element_adopt",
+		unifi.SettingElementAdoptKey,
 		func() *elementAdoptModel { return &elementAdoptModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingElementAdopt(ctx, site)

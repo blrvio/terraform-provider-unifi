@@ -74,6 +74,7 @@ func NewUswResource() resource.Resource {
 	r := &uswResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_usw",
+		unifi.SettingUswKey,
 		func() *uswModel { return &uswModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingUsw(ctx, site)

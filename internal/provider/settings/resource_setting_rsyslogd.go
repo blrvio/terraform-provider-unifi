@@ -273,6 +273,7 @@ func NewRsyslogdResource() resource.Resource {
 	r := &rsyslogdResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_rsyslogd",
+		unifi.SettingRsyslogdKey,
 		func() *rsyslogdModel { return &rsyslogdModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingRsyslogd(ctx, site)

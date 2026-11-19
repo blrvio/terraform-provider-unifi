@@ -635,6 +635,7 @@ func NewIpsResource() resource.Resource {
 	r := &ipsResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_ips",
+		unifi.SettingIpsKey,
 		func() *ipsModel { return &ipsModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingIps(ctx, site)

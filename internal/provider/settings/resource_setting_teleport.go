@@ -92,6 +92,7 @@ func NewTeleportResource() resource.Resource {
 	r := &teleportResource{}
 	r.GenericResource = NewSettingResource(
 		"unifi_setting_teleport",
+		unifi.SettingTeleportKey,
 		func() *teleportModel { return &teleportModel{} },
 		func(ctx context.Context, client *base.Client, site string) (interface{}, error) {
 			return client.GetSettingTeleport(ctx, site)
