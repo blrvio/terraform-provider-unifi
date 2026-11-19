@@ -165,7 +165,7 @@ func ResourceDevice() *schema.Resource {
 							Type:         schema.TypeString,
 							Optional:     true,
 							Default:      "switch",
-							ValidateFunc: validation.StringInSlice([]string{"switch", "mirror", "aggregate"}, false),
+							ValidateFunc: validation.StringInSlice([]string{"", "switch", "mirror", "aggregate"}, false),
 							DiffSuppressFunc: func(k, old, newValue string, d *schema.ResourceData) bool {
 								if old == "" && newValue == "switch" {
 									return true
@@ -189,7 +189,7 @@ func ResourceDevice() *schema.Resource {
 								"  - To prevent unwanted power delivery",
 							Type:         schema.TypeString,
 							Optional:     true,
-							ValidateFunc: validation.StringInSlice([]string{"auto", "pasv24", "passthrough", "off"}, false),
+							ValidateFunc: validation.StringInSlice([]string{"", "auto", "pasv24", "passthrough", "off"}, false),
 						},
 						"aggregate_num_ports": {
 							Description: "The number of ports to include in a link aggregation group (LAG). Valid range: 2-8 ports. Used when:\n" +
@@ -199,7 +199,7 @@ func ResourceDevice() *schema.Resource {
 								"Note: All ports in the LAG must be sequential and have matching configurations.",
 							Type:         schema.TypeInt,
 							Optional:     true,
-							ValidateFunc: validation.IntBetween(2, 8),
+							ValidateFunc: validation.Any(validation.IntInSlice([]int{0}), validation.IntBetween(2, 8)),
 							DiffSuppressFunc: func(k, old, newValue string, d *schema.ResourceData) bool {
 								if old == strconv.Itoa(0) && newValue == "" {
 									return true

@@ -3,6 +3,7 @@ package device
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 
@@ -16,6 +17,7 @@ import (
 
 func ResourcePortProfile() *schema.Resource {
 	return &schema.Resource{
+		CustomizeDiff: customizePortProfileStormControl,
 		Description: "The `unifi_port_profile` resource manages port profiles that can be applied to UniFi switch ports.\n\n" +
 			"Port profiles define a collection of settings that can be applied to one or more switch ports, including:\n" +
 			"  * Network and VLAN settings\n" +
@@ -76,7 +78,7 @@ func ResourcePortProfile() *schema.Resource {
 				Description:  "The maximum outbound bandwidth allowed on the port in kilobits per second. Range: 64-9999999 kbps. Only applied when egress_rate_limit_kbps_enabled is true.",
 				Type:         schema.TypeInt,
 				Optional:     true,
-				ValidateFunc: validation.IntBetween(64, 9999999),
+				ValidateFunc: validation.Any(validation.IntInSlice([]int{0}), validation.IntBetween(64, 9999999)),
 			},
 			"egress_rate_limit_kbps_enabled": {
 				Description: "Enable outbound bandwidth rate limiting on the port. When enabled, traffic will be limited to the rate specified in egress_rate_limit_kbps.",
@@ -107,7 +109,7 @@ func ResourcePortProfile() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
-				ValidateFunc: validation.StringInSlice([]string{"all", "native", "customize", "disabled"}, false),
+				ValidateFunc: validation.StringInSlice([]string{"", "all", "native", "customize", "disabled"}, false),
 			},
 			"full_duplex": {
 				Description: "Enable full-duplex mode when auto-negotiation is disabled. Full duplex allows simultaneous two-way communication.",
@@ -169,7 +171,7 @@ func ResourcePortProfile() *schema.Resource {
 				Description:  "The POE mode for the port profile. Can be one of `auto`, `passv24`, `passthrough` or `off`.",
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"auto", "passv24", "passthrough", "off"}, false),
+				ValidateFunc: validation.StringInSlice([]string{"", "auto", "passv24", "passthrough", "off"}, false),
 			},
 			"port_security_enabled": {
 				Description: "Enable MAC address-based port security. When enabled:\n" +
@@ -242,7 +244,7 @@ func ResourcePortProfile() *schema.Resource {
 					"Only used when autoneg is false",
 				Type:         schema.TypeInt,
 				Optional:     true,
-				ValidateFunc: validation.IntInSlice([]int{10, 100, 1000, 2500, 5000, 10000, 20000, 25000, 40000, 50000, 100000}),
+				ValidateFunc: validation.IntInSlice([]int{0, 10, 100, 1000, 2500, 5000, 10000, 20000, 25000, 40000, 50000, 100000}),
 			},
 			"stormctrl_bcast_enabled": {
 				Description: "Enable broadcast storm control. When enabled:\n" +
@@ -255,11 +257,10 @@ func ResourcePortProfile() *schema.Resource {
 				Default:  false,
 			},
 			"stormctrl_bcast_level": {
-				Description:   "The broadcast Storm Control level for the port profile. Can be between 0 and 100.",
-				Type:          schema.TypeInt,
-				Optional:      true,
-				ValidateFunc:  validation.IntBetween(0, 100),
-				ConflictsWith: []string{"stormctrl_bcast_rate"},
+				Description:  "The broadcast Storm Control level for the port profile. Can be between 0 and 100.",
+				Type:         schema.TypeInt,
+				Optional:     true,
+				ValidateFunc: validation.IntBetween(0, 100),
 			},
 			"stormctrl_bcast_rate": {
 				Description: "Maximum broadcast traffic rate in packets per second (0 - 14880000). Used to:\n" +
@@ -282,11 +283,10 @@ func ResourcePortProfile() *schema.Resource {
 				Default:  false,
 			},
 			"stormctrl_mcast_level": {
-				Description:   "The multicast Storm Control level for the port profile. Can be between 0 and 100.",
-				Type:          schema.TypeInt,
-				Optional:      true,
-				ValidateFunc:  validation.IntBetween(0, 100),
-				ConflictsWith: []string{"stormctrl_mcast_rate"},
+				Description:  "The multicast Storm Control level for the port profile. Can be between 0 and 100.",
+				Type:         schema.TypeInt,
+				Optional:     true,
+				ValidateFunc: validation.IntBetween(0, 100),
 			},
 			"stormctrl_mcast_rate": {
 				Description: "Maximum multicast traffic rate in packets per second (0 - 14880000). Used to:\n" +
@@ -302,7 +302,7 @@ func ResourcePortProfile() *schema.Resource {
 				Description:  "The type of Storm Control to use for the port profile. Can be one of `level` or `rate`.",
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"level", "rate"}, false),
+				ValidateFunc: validation.StringInSlice([]string{"", "level", "rate"}, false),
 			},
 			"stormctrl_ucast_enabled": {
 				Description: "Enable unknown unicast storm control. When enabled:\n" +
@@ -315,11 +315,10 @@ func ResourcePortProfile() *schema.Resource {
 				Default:  false,
 			},
 			"stormctrl_ucast_level": {
-				Description:   "The unknown unicast Storm Control level for the port profile. Can be between 0 and 100.",
-				Type:          schema.TypeInt,
-				Optional:      true,
-				ValidateFunc:  validation.IntBetween(0, 100),
-				ConflictsWith: []string{"stormctrl_ucast_rate"},
+				Description:  "The unknown unicast Storm Control level for the port profile. Can be between 0 and 100.",
+				Type:         schema.TypeInt,
+				Optional:     true,
+				ValidateFunc: validation.IntBetween(0, 100),
 			},
 			"stormctrl_ucast_rate": {
 				Description: "Maximum unknown unicast traffic rate in packets per second (0 - 14880000). Used to:\n" +
@@ -357,7 +356,7 @@ func ResourcePortProfile() *schema.Resource {
 					"    - For specific VLAN requirements",
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.StringInSlice([]string{"auto", "block_all", "custom"}, false),
+				ValidateFunc: validation.StringInSlice([]string{"", "auto", "block_all", "custom"}, false),
 			},
 			// TODO: rename to voice_network_id
 			"voice_networkconf_id": {
@@ -614,4 +613,18 @@ func resourcePortProfileDelete(ctx context.Context, d *schema.ResourceData, meta
 
 	err := c.DeletePortProfile(ctx, site, id)
 	return diag.FromErr(err)
+}
+
+// customizePortProfileStormControl rejects a storm-control level and rate configured
+// together. It replaces ConflictsWith, which also fired on the 0 ("unset") values the
+// controller returns for both, so config generated from an import failed validation.
+func customizePortProfileStormControl(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+	for _, k := range []string{"bcast", "mcast", "ucast"} {
+		level, _ := d.Get("stormctrl_" + k + "_level").(int)
+		rate, _ := d.Get("stormctrl_" + k + "_rate").(int)
+		if level != 0 && rate != 0 {
+			return fmt.Errorf("stormctrl_%[1]s_level and stormctrl_%[1]s_rate cannot both be set", k)
+		}
+	}
+	return nil
 }
