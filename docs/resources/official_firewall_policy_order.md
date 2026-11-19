@@ -3,12 +3,15 @@
 page_title: "unifi_official_firewall_policy_order Resource - terraform-provider-unifi"
 subcategory: ""
 description: |-
-  Manages the evaluation order of firewall policies for a source/destination zone pair via the UniFi Official API (integration/v1). Requires a controller running version 10.1.78 or later with API-key authentication. The order applies to user-defined policies evaluated after the system-defined policies.
+  Manages the evaluation order of the user-defined firewall policies of a source/destination zone pair via the UniFi Official API (integration/v1). Requires a controller running version 10.1.78 or later with API-key authentication.
+  The controller keeps two ordered lists per zone pair: user-defined policies evaluated before the system-defined (predefined) policies, and those evaluated after them. This resource owns both lists of the pair: every user-defined policy of the pair must appear in exactly one of them, and a policy created outside Terraform shows up as drift. Destroying the resource only removes it from state; the order on the controller is left as is.
 ---
 
 # unifi_official_firewall_policy_order (Resource)
 
-Manages the evaluation order of firewall policies for a source/destination zone pair via the UniFi **Official API** (`integration/v1`). Requires a controller running version 10.1.78 or later with API-key authentication. The order applies to user-defined policies evaluated after the system-defined policies.
+Manages the evaluation order of the user-defined firewall policies of a source/destination zone pair via the UniFi **Official API** (`integration/v1`). Requires a controller running version 10.1.78 or later with API-key authentication.
+
+The controller keeps two ordered lists per zone pair: user-defined policies evaluated **before** the system-defined (predefined) policies, and those evaluated **after** them. This resource owns both lists of the pair: every user-defined policy of the pair must appear in exactly one of them, and a policy created outside Terraform shows up as drift. Destroying the resource only removes it from state; the order on the controller is left as is.
 
 ## Example Usage
 
@@ -16,13 +19,17 @@ Manages the evaluation order of firewall policies for a source/destination zone 
 # Requires a controller running 10.1.78+ with API-key authentication (Official API).
 
 # Order the user-defined firewall policies for a source/destination zone pair.
+# New policies created in the UniFi UI land in the "before system-defined" list.
 resource "unifi_official_firewall_policy_order" "iot_to_wan" {
   source_zone_id      = "11111111-1111-1111-1111-111111111111"
   destination_zone_id = "22222222-2222-2222-2222-222222222222"
-  policy_ids = [
+
+  before_system_defined_policy_ids = [
     "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
     "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
   ]
+  # Policies evaluated after the predefined ones (empty by default).
+  after_system_defined_policy_ids = []
 }
 ```
 
@@ -32,11 +39,12 @@ resource "unifi_official_firewall_policy_order" "iot_to_wan" {
 ### Required
 
 - `destination_zone_id` (String) ID of the firewall zone to which the matched traffic is destined. Changing this forces a new resource.
-- `policy_ids` (List of String) Ordered list of firewall policy UUIDs for the zone pair.
 - `source_zone_id` (String) ID of the firewall zone from which the matched traffic originates. Changing this forces a new resource.
 
 ### Optional
 
+- `after_system_defined_policy_ids` (List of String) Ordered UUIDs of the user-defined policies evaluated **after** the system-defined policies. Defaults to an empty list. Replaces the former `policy_ids` attribute.
+- `before_system_defined_policy_ids` (List of String) Ordered UUIDs of the user-defined policies evaluated **before** the system-defined policies (the UniFi UI default for new policies). Defaults to an empty list.
 - `site` (String) The name of the UniFi site where this resource should be applied. If not specified, the default site will be used.
 
 ### Read-Only
