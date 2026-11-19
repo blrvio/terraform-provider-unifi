@@ -133,7 +133,9 @@ Like `dhcp_guarding`, this attribute is `Optional` and `Computed`: when omitted 
 * 86400 (1 day) - Default, suitable for most networks
 * 3600 (1 hour) - For testing or temporary networks
 * 604800 (1 week) - For stable networks with static clients
-* 2592000 (30 days) - For very stable networks Defaults to `86400`.
+* 2592000 (30 days) - For very stable networks
+
+When the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default. Defaults to `86400`.
 - `dhcp_relay_enabled` (Boolean) Enables DHCP relay for this network. When enabled:
 * DHCP requests are forwarded to an external DHCP server
 * Local DHCP server is disabled
@@ -162,7 +164,9 @@ Default is true for easier management. Defaults to `true`.
 * 86400 (1 day) - Default setting
 * 3600 (1 hour) - For testing
 * 604800 (1 week) - For stable networks
-Typically longer than IPv4 DHCP leases. Defaults to `86400`.
+Typically longer than IPv4 DHCP leases.
+
+When the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default. Defaults to `86400`.
 - `dhcp_v6_start` (String) The starting IPv6 address for the DHCPv6 range. Used in static DHCPv6 configuration.
 Must be a valid IPv6 address within your allocated IPv6 subnet.
 
@@ -225,7 +229,9 @@ Recommended for networks with multicast traffic.
 * `pd` - Prefix Delegation from upstream
 * `single_network` - Share a delegated IPv6 prefix with a single LAN
 
-Choose based on your IPv6 deployment strategy and ISP capabilities. Note: `single_network` has companion controller settings (the single-network interface/LAN binding) that this provider does not yet expose, so a bare `single_network` network may not be fully configurable. Defaults to `none`.
+Choose based on your IPv6 deployment strategy and ISP capabilities. Note: `single_network` has companion controller settings (the single-network interface/LAN binding) that this provider does not yet expose, so a bare `single_network` network may not be fully configurable.
+
+When the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default. Defaults to `none`.
 - `ipv6_pd_interface` (String) The WAN interface to use for IPv6 Prefix Delegation. Options:
 * `wan` - Primary WAN interface
 * `wan2` - Secondary WAN interface
@@ -253,7 +259,9 @@ This attribute is `Optional` + `Computed`: when omitted from configuration it in
 - `ipv6_ra_preferred_lifetime` (Number) The preferred lifetime (in seconds) for IPv6 addresses in Router Advertisements.
 * Must be less than or equal to `ipv6_ra_valid_lifetime`
 * Default: 14400 (4 hours)
-* After this time, addresses become deprecated but still usable Defaults to `14400`.
+* After this time, addresses become deprecated but still usable
+
+When the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default. Defaults to `14400`.
 - `ipv6_ra_priority` (String) Sets the priority for IPv6 Router Advertisements. Options:
 * `high` - Preferred for primary networks
 * `medium` - Standard priority
@@ -264,7 +272,9 @@ This attribute is `Optional` + `Computed`: when omitted from configuration it in
 - `ipv6_ra_valid_lifetime` (Number) The valid lifetime (in seconds) for IPv6 addresses in Router Advertisements.
 * Must be greater than or equal to `ipv6_ra_preferred_lifetime`
 * Default: 86400 (24 hours)
-* After this time, addresses become invalid Defaults to `86400`.
+* After this time, addresses become invalid
+
+When the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default. Defaults to `86400`.
 - `ipv6_static_subnet` (String) The static IPv6 subnet in CIDR notation (e.g., '2001:db8::/64') when using static IPv6.
 Only applicable when `ipv6_interface_type` is 'static'.
 Must be a valid IPv6 subnet allocated to your organization.
@@ -276,7 +286,9 @@ This attribute is `Optional` + `Computed`: when omitted from configuration it in
 * Allows device discovery (e.g., printers, Chromecasts)
 * Supports zero-configuration networking
 * Available on Controller version 7 and later
-- `network_group` (String) The network group for this network. Default is 'LAN'. For WAN networks, use 'WAN' or 'WAN2'. Network groups help organize and apply policies to multiple networks. Defaults to `LAN`.
+- `network_group` (String) The network group for this network. Default is 'LAN'. For WAN networks, use 'WAN' or 'WAN2'. Network groups help organize and apply policies to multiple networks.
+
+When the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default. Defaults to `LAN`.
 - `network_isolation_enabled` (Boolean) Isolates this network from other local networks/VLANs on the site. When enabled:
 * Hosts on this network cannot route to or from other local networks on the site
 * Gateway and internet access are retained (internet access is subject to `internet_access_enabled`)
