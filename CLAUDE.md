@@ -1,6 +1,6 @@
 # UniFi Terraform Provider
 
-Terraform provider for Ubiquiti UniFi network controllers (versions 6.x–9.x), maintained by
+Terraform provider for Ubiquiti UniFi Network controllers on UniFi OS consoles (UniFi Network 9.x–11.x, API-key auth), maintained by
 Black Ravine (`blrvio`) and built on the [`blrvio/go-unifi`](https://github.com/blrvio/go-unifi) SDK.
 Fork of [`filipowm/terraform-provider-unifi`](https://github.com/filipowm/terraform-provider-unifi),
 itself a fork of the original `paultyng/terraform-provider-unifi`.
@@ -18,7 +18,7 @@ removed in go-unifi v10.
   `internal/provider/provider_v2.go`. Do NOT add new ones to the legacy SDKv2 provider
   (`internal/provider/provider.go`). A given resource must live in exactly one of the two — never both
   (the mux server will conflict). Details: `.claude/rules/framework-migration.md`.
-- **IMPORTANT: Regenerate docs after any schema/description change** with `go generate ./tools/`.
+- **IMPORTANT: Regenerate docs after any schema/description change** with `make docs` (`go generate ./tools/docs.go`).
   Everything in `docs/` is generated — never hand-edit it. Details: `.claude/rules/docs-generation.md`.
 - **Commits MUST follow Conventional Commits** (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`,
   `build(deps):`). Release notes and labels are derived from them.
@@ -38,7 +38,7 @@ internal/provider/
 │   ├── resource_*.go      # resource implementation
 │   ├── datasource_*.go    # data source implementation
 │   └── *_model.go         # Framework model (tfsdk tags) + AsUnifiModel/Merge
-├── settings/          # 16 singleton "setting" resources via shared NewSettingResource()
+├── settings/          # 44 singleton "setting" resources (NewSettingResource: read-modify-write)
 ├── validators/        # reusable Framework validators (CIDR, HTTPSUrl, Timezone, RequiredNoneIf, …)
 ├── types/             # reusable schema attributes (ID(), SiteAttribute()) + value helpers
 ├── utils/             # env getters, MAC/CIDR/string helpers, server-error checks and any other shared utilities
@@ -54,7 +54,7 @@ Coding conventions: `.claude/rules/resource-conventions.md`. Validation & versio
 
 ```bash
 make build       # go install
-make lint-fix    # lint (matches CI; no make target exists)
+make lint        # golangci-lint (CI pins v2.12.2); make lint-fix applies fixes
 make docs        # regenerate docs/ from schema + examples/ + templates/
 make testacc     # TF_ACC=1 go test ./... — spins up a Dockerized controller, ~20m
 # Run a single acceptance test:
@@ -62,4 +62,4 @@ make testacc TEST=./internal/provider/acctest TESTARGS='-run TestAccDNSRecord_ba
 ```
 
 Acceptance tests require Docker (a UniFi controller is started automatically). Without `TF_ACC=1`
-they are skipped.
+they are skipped, so `go test ./...` runs the unit tests only.
