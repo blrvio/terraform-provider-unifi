@@ -1369,7 +1369,7 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 	}
 
 	// Unset (omitted) values read as the schema default; see unset_defaults.go.
-	dhcpLease := orDefault(resp.DHCPDLeaseTime, defaultDHCPLease)
+	dhcpLease := utils.OrDefault(resp.DHCPDLeaseTime, defaultDHCPLease)
 
 	dhcpDNS := []string{}
 	if resp.DHCPDDNSEnabled {
@@ -1411,8 +1411,8 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		dhcpV6DNS = append(dhcpV6DNS, dns)
 	}
 
-	networkGroup := orDefault(resp.NetworkGroup, defaultNetworkGroup)
-	ipv6InterfaceType := orDefault(resp.IPV6InterfaceType, defaultIPV6InterfaceType)
+	networkGroup := utils.OrDefault(resp.NetworkGroup, defaultNetworkGroup)
+	ipv6InterfaceType := utils.OrDefault(resp.IPV6InterfaceType, defaultIPV6InterfaceType)
 
 	// The controller returns a null public key, so derive it from the private key
 	// (the response value, or the one we generated and stored in state).
@@ -1452,7 +1452,7 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		"dhcp_v6_dns_auto":              resp.DHCPDV6DNSAuto,
 		"dhcp_v6_dns":                   dhcpV6DNS,
 		"dhcp_v6_enabled":               resp.DHCPDV6Enabled,
-		"dhcp_v6_lease":                 orDefault(resp.DHCPDV6LeaseTime, defaultDHCPV6Lease),
+		"dhcp_v6_lease":                 utils.OrDefault(resp.DHCPDV6LeaseTime, defaultDHCPV6Lease),
 		"dhcp_v6_start":                 resp.DHCPDV6Start,
 		"dhcp_v6_stop":                  resp.DHCPDV6Stop,
 		"dhcpd_boot_enabled":            resp.DHCPDBootEnabled,
@@ -1474,9 +1474,9 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		"ipv6_pd_start":              resp.IPV6PDStart,
 		"ipv6_pd_stop":               resp.IPV6PDStop,
 		"ipv6_ra_enable":             resp.IPV6RaEnabled,
-		"ipv6_ra_preferred_lifetime": orDefault(resp.IPV6RaPreferredLifetime, defaultIPV6RaPreferredLife),
+		"ipv6_ra_preferred_lifetime": utils.OrDefault(resp.IPV6RaPreferredLifetime, defaultIPV6RaPreferredLife),
 		"ipv6_ra_priority":           resp.IPV6RaPriority,
-		"ipv6_ra_valid_lifetime":     orDefault(resp.IPV6RaValidLifetime, defaultIPV6RaValidLife),
+		"ipv6_ra_valid_lifetime":     utils.OrDefault(resp.IPV6RaValidLifetime, defaultIPV6RaValidLife),
 		"ipv6_static_subnet":         resp.IPV6Subnet,
 		"multicast_dns":              resp.MdnsEnabled,
 		"wan_dhcp_v6_pd_size":        resp.WANDHCPv6PDSize,
