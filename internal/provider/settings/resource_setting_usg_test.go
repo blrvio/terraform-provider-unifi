@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -105,4 +106,23 @@ func TestGlobalNetworkModelRoundTrip(t *testing.T) {
 	m.SetSite("default")
 	state := tfsdk.State{Schema: sresp.Schema, Raw: tftypes.NewValue(sresp.Schema.Type().TerraformType(ctx), nil)}
 	require.False(t, state.Set(ctx, m).HasError())
+}
+
+// G16: unset DHCP relay values and mss_clamp_mss read as null so generated config validates.
+func TestUsgMergeUnsetRelayAndMSS(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	m := &usgModel{}
+	require.False(t, m.Merge(ctx, &unifi.SettingUsg{MssClamp: "auto"}).HasError())
+	assert.True(t, m.MssClampMss.IsNull())
+	var relay DHCPRelayModel
+	require.False(t, m.DhcpRelay.As(ctx, &relay, basetypes.ObjectAsOptions{}).HasError())
+	assert.True(t, relay.HopCount.IsNull())
+	assert.True(t, relay.MaxSize.IsNull())
+	assert.True(t, relay.Port.IsNull())
+	assert.True(t, relay.AgentsPackets.IsNull())
+
+	m = &usgModel{}
+	require.False(t, m.Merge(ctx, &unifi.SettingUsg{MssClamp: "custom", MssClampMss: 1452, DHCPRelayHopCount: 4}).HasError())
+	assert.Equal(t, int64(1452), m.MssClampMss.ValueInt64())
 }

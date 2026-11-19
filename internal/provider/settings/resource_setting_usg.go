@@ -410,11 +410,12 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	d.TCPTimeouts = tcpTimeoutObj
 
 	// Convert DHCP Relay settings
+	// Unset relay values come back as ""/0, which the validators reject; report them as null.
 	dhcpRelayModel := DHCPRelayModel{
-		AgentsPackets: types.StringValue(model.DHCPRelayAgentsPackets),
-		HopCount:      types.Int64Value(int64(model.DHCPRelayHopCount)),
-		MaxSize:       types.Int64Value(int64(model.DHCPRelayMaxSize)),
-		Port:          types.Int64Value(int64(model.DHCPRelayPort)),
+		AgentsPackets: ut.StringOrNull(model.DHCPRelayAgentsPackets),
+		HopCount:      ut.Int64OrNull(model.DHCPRelayHopCount),
+		MaxSize:       ut.Int64OrNull(model.DHCPRelayMaxSize),
+		Port:          ut.Int64OrNull(model.DHCPRelayPort),
 	}
 
 	// TODO deprecated
@@ -463,7 +464,7 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	d.IcmpTimeout = types.Int64Value(int64(model.ICMPTimeout))
 	d.LldpEnableAll = types.BoolValue(model.LldpEnableAll)
 	d.MssClamp = types.StringValue(model.MssClamp)
-	d.MssClampMss = types.Int64Value(int64(model.MssClampMss))
+	d.MssClampMss = ut.Int64OrNull(model.MssClampMss) // 0 = unset (mss_clamp auto)
 	d.OffloadAccounting = types.BoolValue(model.OffloadAccounting)
 	d.OffloadL2Blocking = types.BoolValue(model.OffloadL2Blocking)
 	d.OffloadSch = types.BoolValue(model.OffloadSch)
