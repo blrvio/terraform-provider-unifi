@@ -66,7 +66,7 @@ func New(version string) func() *schema.Provider {
 					Description: ProviderUsernameDescription,
 					Type:        schema.TypeString,
 					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("UNIFI_USERNAME", ""),
+					DefaultFunc: schema.EnvDefaultFunc("UNIFI_USERNAME", nil),
 					Deprecated:  ProviderUserPassDeprecated,
 				},
 				"password": {
@@ -74,7 +74,7 @@ func New(version string) func() *schema.Provider {
 					Type:        schema.TypeString,
 					Optional:    true,
 					Sensitive:   true,
-					DefaultFunc: schema.EnvDefaultFunc("UNIFI_PASSWORD", ""),
+					DefaultFunc: schema.EnvDefaultFunc("UNIFI_PASSWORD", nil),
 					Deprecated:  ProviderUserPassDeprecated,
 				},
 				"api_key": {
