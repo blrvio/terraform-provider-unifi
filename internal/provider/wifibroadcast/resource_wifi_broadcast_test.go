@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/blrvio/go-unifi/v11/unifi/official"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -144,4 +145,14 @@ func TestWifiBroadcastMerge_EnabledSurvives(t *testing.T) {
 	assert.Equal(t, "IOT_OPTIMIZED", m.Type.ValueString())
 	assert.False(t, m.Enabled.ValueBool())
 	assert.Equal(t, "IoT-WiFi", m.Name.ValueString())
+}
+
+// G3: security_configuration carries the passphrase, so it must be Sensitive.
+func TestWifiBroadcastSecurityConfigurationSensitive(t *testing.T) {
+	t.Parallel()
+	var resp resource.SchemaResponse
+	NewWifiBroadcastResource().Schema(context.Background(), resource.SchemaRequest{}, &resp)
+	attr, ok := resp.Schema.Attributes["security_configuration"]
+	require.True(t, ok)
+	assert.True(t, attr.IsSensitive())
 }

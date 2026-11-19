@@ -292,8 +292,10 @@ func (r *wifiBroadcastResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 			"security_configuration": schema.StringAttribute{
 				MarkdownDescription: "The WiFi security configuration." + jsonNote +
-					" This is a required complex union (e.g. `{\"type\":\"WPA2_PERSONAL\",\"passphrase\":\"...\"}`).",
+					" This is a required complex union (e.g. `{\"type\":\"WPA2_PERSONAL\",\"passphrase\":\"...\"}`)." +
+					" Sensitive, because it carries the passphrase: plans show `(sensitive value)` for any change to it.",
 				Required:   true,
+				Sensitive:  true,
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"network": schema.StringAttribute{

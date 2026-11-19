@@ -56,7 +56,7 @@ resource "unifi_wifi_broadcast" "iot" {
 ### Required
 
 - `name` (String) The SSID / name of the WiFi broadcast.
-- `security_configuration` (String) The WiFi security configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. This is a required complex union (e.g. `{"type":"WPA2_PERSONAL","passphrase":"..."}`).
+- `security_configuration` (String, Sensitive) The WiFi security configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. This is a required complex union (e.g. `{"type":"WPA2_PERSONAL","passphrase":"..."}`). Sensitive, because it carries the passphrase: plans show `(sensitive value)` for any change to it.
 - `type` (String) The broadcast type. One of `STANDARD`, `IOT_OPTIMIZED`. Changing the type forces a new resource.
 
 ### Optional
