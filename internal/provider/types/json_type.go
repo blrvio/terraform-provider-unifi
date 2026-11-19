@@ -1,10 +1,12 @@
 package types
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -146,8 +148,8 @@ func dropJSONNulls(v any) any {
 	}
 }
 
-// MarshalJSONValue encodes v as a compact JSON attribute value, reporting failures
-// against the attribute name. A nil pointer/interface encodes as a null value.
+// MarshalJSONValue encodes v as a canonical JSON attribute value (see CanonicalJSON),
+// reporting failures against the attribute name. A nil pointer/interface encodes as null.
 func MarshalJSONValue(attrName string, v any) (JSONValue, diag.Diagnostics) {
 	var diags diag.Diagnostics
 	if v == nil || (reflect.ValueOf(v).Kind() == reflect.Pointer && reflect.ValueOf(v).IsNil()) {
@@ -158,7 +160,32 @@ func MarshalJSONValue(attrName string, v any) (JSONValue, diag.Diagnostics) {
 		diags.AddError("Failed to encode "+attrName, err.Error())
 		return JSONNull(), diags
 	}
-	return JSONStringValue(string(raw)), diags
+	canonical, err := CanonicalJSON(raw)
+	if err != nil {
+		diags.AddError("Failed to encode "+attrName, err.Error())
+		return JSONNull(), diags
+	}
+	return JSONStringValue(canonical), diags
+}
+
+// CanonicalJSON re-encodes a JSON document the way Terraform's jsonencode() does:
+// compact, object keys sorted, no null-valued keys (numbers keep their precision).
+// Values read from the controller are stored in this form, so a configuration written
+// with jsonencode() (and without explicit nulls) matches an imported object byte for
+// byte and plans no change.
+func CanonicalJSON(raw []byte) (string, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if err := enc.Encode(dropJSONNulls(v)); err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(buf.String(), "\n"), nil
 }
 
 // UnmarshalJSONValue decodes a defined JSON attribute value into target; null or

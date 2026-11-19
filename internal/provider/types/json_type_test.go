@@ -88,3 +88,29 @@ func TestMarshalUnmarshalJSONValue(t *testing.T) {
 	_, diags = UnmarshalJSONValue("x", JSONStringValue(`{bad`), &got)
 	assert.True(t, diags.HasError())
 }
+
+// Values read from the controller are stored as Terraform's jsonencode() would write
+// them, so an imported object matches a jsonencode()d configuration byte for byte.
+func TestCanonicalJSON(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct{ in, want string }{
+		// Go struct order (networkIds before matchOpposite) and an explicit null.
+		"policy source": {
+			`{"trafficFilter":{"networkFilter":{"networkIds":["n1"],"matchOpposite":false},"type":"NETWORK"},"zoneId":"z","ipsecFilter":null}`,
+			`{"trafficFilter":{"networkFilter":{"matchOpposite":false,"networkIds":["n1"]},"type":"NETWORK"},"zoneId":"z"}`,
+		},
+		"large int keeps precision": {`{"b":9007199254740993,"a":1.5}`, `{"a":1.5,"b":9007199254740993}`},
+		"html escaped like jsonencode": {`{"a":"<x>&"}`, `{"a":"\u003cx\u003e\u0026"}`},
+		"array order kept":            {`[3,1,2]`, `[3,1,2]`},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			got, err := CanonicalJSON([]byte(tc.in))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+	_, err := CanonicalJSON([]byte(`{bad`))
+	assert.Error(t, err)
+}

@@ -121,7 +121,11 @@ func filterToJSON(v interface{}) (ut.JSONValue, error) {
 	if err != nil {
 		return ut.JSONNull(), err
 	}
-	return ut.JSONStringValue(string(raw)), nil
+	canonical, err := ut.CanonicalJSON(raw)
+	if err != nil {
+		return ut.JSONNull(), err
+	}
+	return ut.JSONStringValue(canonical), nil
 }
 
 // AsUnifiModel builds the Official-API create/update body. ACLRuleUpdate uses a
