@@ -45,7 +45,7 @@ Each profile can be configured with:
   * IP address of the RADIUS server
   * Shared secret for secure communication (see [below for nested schema](#nestedblock--auth_server))
 - `interim_update_enabled` (Boolean) Enable periodic updates during active sessions. This allows tracking of ongoing session data like bandwidth usage. Defaults to `false`.
-- `interim_update_interval` (Number) The interval (in seconds) between interim updates when `interim_update_enabled` is true. Default is 3600 seconds (1 hour). Defaults to `3600`.
+- `interim_update_interval` (Number) The interval (in seconds) between interim updates when `interim_update_enabled` is true. Default is 3600 seconds (1 hour). A profile that stores no interval (such as the built-in `Default`) reads as the default. Defaults to `3600`.
 - `site` (String) The name of the UniFi site where the RADIUS profile should be created. If not specified, the default site will be used.
 - `use_usg_acct_server` (Boolean) Use the controller as a RADIUS accounting server. This allows local accounting without an external RADIUS server. Defaults to `false`.
 - `use_usg_auth_server` (Boolean) Use the controller as a RADIUS authentication server. This allows local authentication without an external RADIUS server. Defaults to `false`.
@@ -64,11 +64,11 @@ Each profile can be configured with:
 
 Required:
 
-- `ip` (String) The IPv4 address of the RADIUS accounting server (e.g., '192.168.1.100'). Must be reachable from your UniFi network.
 - `xsecret` (String, Sensitive) The shared secret key used to secure communication between the UniFi controller and the RADIUS server. This must match the secret configured on your RADIUS server.
 
 Optional:
 
+- `ip` (String) The IPv4 address of the RADIUS accounting server (e.g., '192.168.1.100'). Must be reachable from your UniFi network. Leave unset when the gateway itself is the server (`use_usg_acct_server`), as in the built-in `Default` profile.
 - `port` (Number) The UDP port number where the RADIUS accounting service is listening. The standard port is 1813, but this can be changed if needed to match your server configuration. Defaults to `1813`.
 
 
@@ -77,9 +77,9 @@ Optional:
 
 Required:
 
-- `ip` (String) The IPv4 address of the RADIUS authentication server (e.g., '192.168.1.100'). Must be reachable from your UniFi network.
 - `xsecret` (String, Sensitive) The shared secret key used to secure communication between the UniFi controller and the RADIUS server. This must match the secret configured on your RADIUS server.
 
 Optional:
 
+- `ip` (String) The IPv4 address of the RADIUS authentication server (e.g., '192.168.1.100'). Must be reachable from your UniFi network. Leave unset when the gateway itself is the server (`use_usg_auth_server`), as in the built-in `Default` profile.
 - `port` (Number) The UDP port number where the RADIUS authentication service is listening. The standard port is 1812, but this can be changed if needed to match your server configuration. Defaults to `1812`.
