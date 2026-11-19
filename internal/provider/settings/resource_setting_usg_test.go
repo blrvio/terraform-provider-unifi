@@ -88,3 +88,21 @@ func TestSettingsMergeUnsetAsNull(t *testing.T) {
 	assert.True(t, rs.IP.IsNull())
 	assert.Equal(t, int64(514), rs.Port.ValueInt64())
 }
+
+func TestGlobalNetworkModelRoundTrip(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	m := &globalNetworkModel{}
+	require.False(t, m.Merge(ctx, &unifi.SettingGlobalNetwork{ID: "g1", DefaultSecurityPosture: "ALLOW_ALL"}).HasError())
+	body, diags := m.AsUnifiModel(ctx)
+	require.False(t, diags.HasError())
+	got, ok := body.(*unifi.SettingGlobalNetwork)
+	require.True(t, ok)
+	assert.Equal(t, "ALLOW_ALL", got.DefaultSecurityPosture)
+
+	var sresp resource.SchemaResponse
+	NewGlobalNetworkResource().Schema(ctx, resource.SchemaRequest{}, &sresp)
+	m.SetSite("default")
+	state := tfsdk.State{Schema: sresp.Schema, Raw: tftypes.NewValue(sresp.Schema.Type().TerraformType(ctx), nil)}
+	require.False(t, state.Set(ctx, m).HasError())
+}
