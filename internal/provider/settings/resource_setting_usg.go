@@ -355,6 +355,13 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	// and report the enabled flag as false. Region Blocking is managed by the
 	// unifi_setting_usg_geo resource on UDM-Pro / Network 10.x.
 	d.GeoIPFilteringEnabled = types.BoolValue(false)
+	// On import the model starts from its Go zero value, an object with no attribute
+	// types, which the framework rejects ("Value Conversion Error"); use a typed null.
+	if d.GeoIPFiltering.IsNull() {
+		geoNull, geoDiags := ut.ObjectNull(&GeoIPFilteringModel{})
+		diags.Append(geoDiags...)
+		d.GeoIPFiltering = geoNull
+	}
 
 	d.UpnpEnabled = types.BoolValue(model.UpnpEnabled)
 	// Set UPNP attributes
@@ -365,7 +372,8 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 			WANInterface:  types.StringValue(model.UpnpWANInterface),
 		}
 
-		upnpObject, diags := types.ObjectValueFrom(ctx, upnp.AttributeTypes(), upnp)
+		upnpObject, upnpDiags := types.ObjectValueFrom(ctx, upnp.AttributeTypes(), upnp)
+		diags.Append(upnpDiags...)
 		if diags.HasError() {
 			return diags
 		}
@@ -427,7 +435,8 @@ func (d *usgModel) Merge(ctx context.Context, other interface{}) diag.Diagnostic
 	}
 
 	// Set the DHCP relay servers list
-	dhcpRelayServers, diags := types.ListValueFrom(ctx, types.StringType, dhcpRelay)
+	dhcpRelayServers, relayDiags := types.ListValueFrom(ctx, types.StringType, dhcpRelay)
+	diags.Append(relayDiags...)
 	if diags.HasError() {
 		return diags
 	}

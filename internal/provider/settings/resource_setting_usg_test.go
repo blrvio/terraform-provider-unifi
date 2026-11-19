@@ -6,7 +6,10 @@ import (
 
 	"github.com/blrvio/go-unifi/v11/unifi"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,4 +45,25 @@ func TestUsgGeoIsNoOp(t *testing.T) {
 	// And Merge reports the enabled flag as a stable false.
 	require.False(t, m.Merge(ctx, &unifi.SettingUsg{}).HasError())
 	assert.Equal(t, types.BoolValue(false), m.GeoIPFilteringEnabled)
+}
+
+// G7: importing unifi_setting_usg starts from a zero-value model; Merge must leave
+// geo_ip_filtering as a typed null so the state can be set (it used to fail with
+// "Value Conversion Error").
+func TestUsgImportStateSet(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	var sresp resource.SchemaResponse
+	NewUsgResource().Schema(ctx, resource.SchemaRequest{}, &sresp)
+	require.False(t, sresp.Diagnostics.HasError())
+
+	m := &usgModel{}
+	require.False(t, m.Merge(ctx, &unifi.SettingUsg{ID: "u1", UpnpEnabled: false}).HasError())
+	m.SetSite("default")
+
+	state := tfsdk.State{Schema: sresp.Schema, Raw: tftypes.NewValue(sresp.Schema.Type().TerraformType(ctx), nil)}
+	diags := state.Set(ctx, m)
+	require.False(t, diags.HasError(), "state.Set: %v", diags)
+	assert.True(t, m.GeoIPFiltering.IsNull())
 }
