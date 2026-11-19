@@ -325,6 +325,8 @@ func (p *unifiProvider) DataSources(_ context.Context) []func() datasource.DataS
 		firewall.NewFirewallZoneDatasource,
 		officialro.NewWANDataSource,
 		officialro.NewVPNServerDataSource,
+		officialro.NewVPNServersDataSource,
+		officialro.NewWANsDataSource,
 		officialro.NewSiteToSiteTunnelDataSource,
 		officialro.NewSwitchLAGDataSource,
 		officialro.NewDeviceTagDataSource,

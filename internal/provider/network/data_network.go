@@ -55,6 +55,11 @@ func DataNetwork() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 			},
+			"official_id": {
+				Description: "The UUID of this network in the UniFi Official API (`integration/v1`), stored by the controller as `external_id`.",
+				Type:        schema.TypeString,
+				Computed:    true,
+			},
 			"network_group": {
 				Description: "The group of the network.",
 				Type:        schema.TypeString,
@@ -389,6 +394,7 @@ func dataNetworkRead(ctx context.Context, d *schema.ResourceData, meta interface
 				"wan_egress_qos":        n.WANEgressQOS,
 				"wan_username":          n.WANUsername,
 				"x_wan_password":        n.XWANPassword,
+				"official_id":           n.ExternalID,
 				"wan_type_v6":           n.WANTypeV6,
 				"wan_dhcp_v6_pd_size":   n.WANDHCPv6PDSize,
 				"wan_ipv6":              n.WANIPV6,

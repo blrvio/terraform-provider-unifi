@@ -70,6 +70,7 @@ data "unifi_network" "my_network" {
 - `ipv6_static_subnet` (String) Specifies the static IPv6 subnet (when ipv6_interface_type is 'static').
 - `multicast_dns` (Boolean) Specifies whether Multicast DNS (mDNS) is enabled or not on the network (Controller >=v7).
 - `network_group` (String) The group of the network.
+- `official_id` (String) The UUID of this network in the UniFi Official API (`integration/v1`), stored by the controller as `external_id`.
 - `purpose` (String) The purpose of the network. One of `corporate`, `guest`, `wan`, or `vlan-only`.
 - `subnet` (String) The subnet of the network (CIDR address).
 - `vlan_id` (Number) The VLAN ID of the network.

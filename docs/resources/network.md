@@ -370,6 +370,7 @@ Choose based on your ISP's requirements.
 ### Read-Only
 
 - `id` (String) The ID of the network.
+- `official_id` (String) The UUID of this network in the UniFi Official API (`integration/v1`), stored by the controller as `external_id` (UniFi Network 11.x). Use it wherever an Official API resource needs the network, e.g. `unifi_official_firewall_zone.network_ids`, instead of hard-coding the UUID. Empty on controllers that do not report it.
 - `wireguard_id` (Number) The controller-assigned numeric id of the WireGuard server instance. Only applicable when `vpn_type` is 'wireguard-server'.
 - `wireguard_public_key` (String) The gateway's own WireGuard public key for this VPN client. The controller does not return it, so the provider derives it from the private key (Curve25519). Add this key as a peer on the remote WireGuard server. Only set when `vpn_type` is 'wireguard-client'.
 

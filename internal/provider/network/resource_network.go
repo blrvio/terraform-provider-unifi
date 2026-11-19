@@ -159,6 +159,14 @@ func ResourceNetwork() *schema.Resource {
 				DiffSuppressFunc: utils.CidrDiffSuppress,
 				ValidateFunc:     utils.CidrValidate,
 			},
+			"official_id": {
+				Description: "The UUID of this network in the UniFi Official API (`integration/v1`), stored by the controller " +
+					"as `external_id` (UniFi Network 11.x). Use it wherever an Official API resource needs the network, " +
+					"e.g. `unifi_official_firewall_zone.network_ids`, instead of hard-coding the UUID. Empty on controllers " +
+					"that do not report it.",
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"network_group": {
 				Description: "The network group for this network. Default is 'LAN'. For WAN networks, use 'WAN' or 'WAN2'. " +
 					"Network groups help organize and apply policies to multiple networks.\n\nWhen the controller stores no value (e.g. a VPN server or a WAN), it is read as this default, and an update leaves it unset while the configuration keeps the default.",
@@ -1460,6 +1468,7 @@ func resourceNetworkSetResourceData(resp *unifi.Network, d *schema.ResourceData,
 		"network_isolation_enabled":     resp.NetworkIsolationEnabled,
 
 		"ipv6_interface_type":        ipv6InterfaceType,
+		"official_id":                resp.ExternalID,
 		"ipv6_pd_interface":          resp.IPV6PDInterface,
 		"ipv6_pd_prefixid":           resp.IPV6PDPrefixid,
 		"ipv6_pd_start":              resp.IPV6PDStart,

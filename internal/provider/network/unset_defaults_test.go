@@ -77,3 +77,20 @@ func TestNetworkWriteKeepsUnset(t *testing.T) {
 		})
 	}
 }
+
+// G5: the Official API UUID (networkconf external_id) is exposed as official_id.
+func TestNetworkOfficialID(t *testing.T) {
+	t.Parallel()
+	n := vpnServer()
+	n.ExternalID = "663bc70c-85bc-415f-9316-19dbdc2353c0"
+	d := schema.TestResourceDataRaw(t, ResourceNetwork().Schema, map[string]interface{}{})
+	require.False(t, resourceNetworkSetResourceData(n, d, "default").HasError())
+	assert.Equal(t, "663bc70c-85bc-415f-9316-19dbdc2353c0", d.Get("official_id"))
+	assert.True(t, ResourceNetwork().Schema["official_id"].Computed)
+	assert.True(t, DataNetwork().Schema["official_id"].Computed)
+
+	// Computed only: the write path keeps the controller's value via read-modify-write.
+	out, err := resourceNetworkGetResourceData(schema.TestResourceDataRaw(t, ResourceNetwork().Schema, map[string]interface{}{"name": "x", "purpose": "remote-user-vpn"}), n)
+	require.NoError(t, err)
+	assert.Equal(t, n.ExternalID, out.ExternalID)
+}
