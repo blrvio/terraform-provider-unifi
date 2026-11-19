@@ -402,7 +402,10 @@ func ResourceDevice() *schema.Resource {
 					"* The device will be removed from the controller\n" +
 					"* The device will need to be readopted to be managed again\n" +
 					"* Device configuration will be reset\n" +
-					"Set to false to keep the device adopted when removing from Terraform management.",
+					"Set to false to keep the device adopted when removing from Terraform management.\n\n" +
+					"Import does not set this attribute (it is destructive): an imported device stays un-forgotten on destroy " +
+					"until the configuration sets it, and the first plan after an import shows it unless it is set explicitly " +
+					"(`forget_on_destroy = false` keeps the device adopted).",
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
@@ -446,6 +449,12 @@ func resourceDeviceImport(ctx context.Context, d *schema.ResourceData, meta inte
 		if err := d.Set("site", site); err != nil {
 			return nil, err
 		}
+	}
+	// allow_adoption only matters on create. forget_on_destroy is destructive and is
+	// deliberately not defaulted here: an imported device is never forgotten on destroy
+	// unless the configuration says so.
+	if err := base.SetImportDefaults(d, map[string]interface{}{"allow_adoption": true}); err != nil {
+		return nil, err
 	}
 
 	return []*schema.ResourceData{d}, nil

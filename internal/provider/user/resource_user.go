@@ -39,7 +39,11 @@ func ResourceUser() *schema.Resource {
 		UpdateContext: resourceUserUpdate,
 		DeleteContext: resourceUserDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: base.ImportSiteAndID,
+			// allow_existing only matters on create. skip_forget_on_destroy (destructive)
+			// is deliberately not defaulted on import.
+			StateContext: base.ImportSiteAndIDWithDefaults(map[string]interface{}{
+				"allow_existing": true,
+			}),
 		},
 
 		Schema: map[string]*schema.Schema{

@@ -2,11 +2,39 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
+
+// ImportSiteAndIDWithDefaults returns an SDKv2 importer that splits `site:id` like
+// ImportSiteAndID and writes defaults for Terraform-only attributes the controller
+// cannot report (SDKv2 does not apply schema defaults on import, so they would
+// otherwise read as null and plan an update right after the import).
+func ImportSiteAndIDWithDefaults(defaults map[string]interface{}) schema.StateContextFunc {
+	return func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+		out, err := ImportSiteAndID(ctx, d, meta)
+		if err != nil {
+			return nil, err
+		}
+		if err := SetImportDefaults(d, defaults); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+}
+
+// SetImportDefaults writes Terraform-only attribute defaults during an SDKv2 import.
+func SetImportDefaults(d *schema.ResourceData, defaults map[string]interface{}) error {
+	for k, v := range defaults {
+		if err := d.Set(k, v); err != nil {
+			return fmt.Errorf("setting import default %s: %w", k, err)
+		}
+	}
+	return nil
+}
 
 // for Terraform Plugin SDK v2.
 func ImportSiteAndID(_ context.Context, d *schema.ResourceData, _ interface{}) ([]*schema.ResourceData, error) {
