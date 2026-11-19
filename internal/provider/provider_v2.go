@@ -16,6 +16,7 @@ import (
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/acl"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/apgroup"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/appblock"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/broadcastgroup"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/channelplan"
@@ -226,6 +227,7 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		broadcastgroup.NewBroadcastGroupResource,
 		channelplan.NewChannelPlanResource,
 		contentfiltering.NewContentFilteringResource,
+		appblock.NewFirewallAppBlockResource,
 		dhcpoption.NewDHCPOptionResource,
 		scheduletask.NewScheduleTaskResource,
 		tag.NewTagResource,
