@@ -425,9 +425,22 @@ func (r *wifiBroadcastResource) Update(ctx context.Context, req resource.UpdateR
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	updateBody, diags := asWifiBroadcastBody(body)
+	planBody, diags := asWifiBroadcastBody(body)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	// The PUT replaces the whole object and the controller rejects missing
+	// variant fields (arpProxyEnabled, broadcastingFrequenciesGHz, ...), so
+	// overlay the plan on the current document instead of sending it alone.
+	current, err := client.Official().WifiBroadcasts().Get(ctx, siteID, id)
+	if err != nil {
+		resp.Diagnostics.Append(base.OfficialAPIErrorDiagnostics("Error reading WiFi broadcast before update", err)...)
+		return
+	}
+	updateBody, err := overlayWifiBroadcast(current, planBody)
+	if err != nil {
+		resp.Diagnostics.AddError("Error building WiFi broadcast update", err.Error())
 		return
 	}
 	updated, err := client.Official().WifiBroadcasts().Update(ctx, siteID, id, *updateBody)
