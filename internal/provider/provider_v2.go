@@ -47,6 +47,7 @@ import (
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/utils"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/virtualdevice"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/wan"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/wifibroadcast"
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/wlangroup"
 )
@@ -227,6 +228,7 @@ func (p *unifiProvider) Resources(_ context.Context) []func() resource.Resource 
 		broadcastgroup.NewBroadcastGroupResource,
 		channelplan.NewChannelPlanResource,
 		contentfiltering.NewContentFilteringResource,
+		wan.NewWANLoadBalancingResource,
 		appblock.NewFirewallAppBlockResource,
 		dhcpoption.NewDHCPOptionResource,
 		scheduletask.NewScheduleTaskResource,
