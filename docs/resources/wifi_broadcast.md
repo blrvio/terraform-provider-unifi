@@ -62,10 +62,10 @@ resource "unifi_wifi_broadcast" "iot" {
 ### Optional
 
 - `basic_data_rate` (String) The basic data rate configuration by frequency (kbps). Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
-- `blackout_schedule` (String) The blackout schedule configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
+- `blackout_schedule` (String) The blackout schedule configuration (days when the WiFi is off). The controller returns days in arbitrary order, so they are stored sorted `SUN`..`SAT`, each day's `timeRanges` by `startTime`; write them in that order to avoid a diff. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `broadcasting_device_filter` (String) The broadcasting device filter. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `channel_2g_locked_to_6` (Boolean) Locks the 2.4GHz radio channel to 6 on all broadcasting devices. Defaults to `false`.
-- `client_filtering_policy` (String) The client (MAC) filtering policy. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
+- `client_filtering_policy` (String) The client (MAC) filtering policy. `macAddressFilter` is a set the controller returns in arbitrary order, so it is stored sorted ascending; write it sorted (e.g. `sort()`) to avoid a diff. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `client_isolation_enabled` (Boolean) Whether client isolation is enabled. Defaults to `false`.
 - `dtim_period_2g_locked_to_3` (Boolean) Locks the DTIM period to 3 for the 2.4GHz radio. Defaults to `false`.
 - `enabled` (Boolean) Whether the WiFi broadcast is enabled. Defaults to `true`.

@@ -177,9 +177,13 @@ func (m *wifiBroadcastModel) Merge(_ context.Context, other interface{}) diag.Di
 	diags.Append(sd...)
 	m.BlackoutSchedule, sd = marshalJSONPtr(d.BlackoutScheduleConfiguration, "blackout_schedule")
 	diags.Append(sd...)
+	m.BlackoutSchedule, sd = sortBlackoutSchedule(m.BlackoutSchedule)
+	diags.Append(sd...)
 	m.BroadcastingDeviceFilter, sd = marshalJSONPtr(d.BroadcastingDeviceFilter, "broadcasting_device_filter")
 	diags.Append(sd...)
 	m.ClientFilteringPolicy, sd = marshalJSONPtr(d.ClientFilteringPolicy, "client_filtering_policy")
+	diags.Append(sd...)
+	m.ClientFilteringPolicy, sd = sortClientFilteringPolicy(m.ClientFilteringPolicy)
 	diags.Append(sd...)
 	m.MdnsProxy, sd = marshalJSONPtr(d.MdnsProxyConfiguration, "mdns_proxy")
 	diags.Append(sd...)
@@ -297,7 +301,7 @@ func (r *wifiBroadcastResource) Schema(_ context.Context, _ resource.SchemaReque
 				Optional:            true,
 			},
 			"blackout_schedule": schema.StringAttribute{
-				MarkdownDescription: "The blackout schedule configuration." + jsonNote,
+				MarkdownDescription: "The blackout schedule configuration (days when the WiFi is off). The controller returns days in arbitrary order, so they are stored sorted `SUN`..`SAT`, each day's `timeRanges` by `startTime`; write them in that order to avoid a diff." + jsonNote,
 				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
@@ -307,7 +311,7 @@ func (r *wifiBroadcastResource) Schema(_ context.Context, _ resource.SchemaReque
 				Optional:            true,
 			},
 			"client_filtering_policy": schema.StringAttribute{
-				MarkdownDescription: "The client (MAC) filtering policy." + jsonNote,
+				MarkdownDescription: "The client (MAC) filtering policy. `macAddressFilter` is a set the controller returns in arbitrary order, so it is stored sorted ascending; write it sorted (e.g. `sort()`) to avoid a diff." + jsonNote,
 				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
