@@ -56,24 +56,24 @@ resource "unifi_wifi_broadcast" "iot" {
 ### Required
 
 - `name` (String) The SSID / name of the WiFi broadcast.
-- `security_configuration` (String, Sensitive) The WiFi security configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. This is a required complex union (e.g. `{"type":"WPA2_PERSONAL","passphrase":"..."}`). Sensitive, because it carries the passphrase: plans show `(sensitive value)` for any change to it.
+- `security_configuration` (String, Sensitive) The WiFi security configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works. This is a required complex union (e.g. `{"type":"WPA2_PERSONAL","passphrase":"..."}`). Sensitive, because it carries the passphrase: plans show `(sensitive value)` for any change to it.
 - `type` (String) The broadcast type. One of `STANDARD`, `IOT_OPTIMIZED`. Changing the type forces a new resource.
 
 ### Optional
 
-- `basic_data_rate` (String) The basic data rate configuration by frequency (kbps). Accepts a JSON string matching the corresponding UniFi **Official API** object shape.
-- `blackout_schedule` (String) The blackout schedule configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape.
-- `broadcasting_device_filter` (String) The broadcasting device filter. Accepts a JSON string matching the corresponding UniFi **Official API** object shape.
+- `basic_data_rate` (String) The basic data rate configuration by frequency (kbps). Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
+- `blackout_schedule` (String) The blackout schedule configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
+- `broadcasting_device_filter` (String) The broadcasting device filter. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `channel_2g_locked_to_6` (Boolean) Locks the 2.4GHz radio channel to 6 on all broadcasting devices. Defaults to `false`.
-- `client_filtering_policy` (String) The client (MAC) filtering policy. Accepts a JSON string matching the corresponding UniFi **Official API** object shape.
+- `client_filtering_policy` (String) The client (MAC) filtering policy. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `client_isolation_enabled` (Boolean) Whether client isolation is enabled. Defaults to `false`.
 - `dtim_period_2g_locked_to_3` (Boolean) Locks the DTIM period to 3 for the 2.4GHz radio. Defaults to `false`.
 - `enabled` (Boolean) Whether the WiFi broadcast is enabled. Defaults to `true`.
 - `hide_name` (Boolean) Whether the SSID is hidden from beacon frames. Defaults to `false`.
-- `mdns_proxy` (String) The mDNS proxy configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape.
-- `multicast_filtering_policy` (String) The multicast filtering policy. Accepts a JSON string matching the corresponding UniFi **Official API** object shape.
+- `mdns_proxy` (String) The mDNS proxy configuration. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
+- `multicast_filtering_policy` (String) The multicast filtering policy. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `multicast_to_unicast_conversion_enabled` (Boolean) Whether multicast-to-unicast conversion is enabled. Defaults to `false`.
-- `network` (String) The network reference the broadcast is attached to. Accepts a JSON string matching the corresponding UniFi **Official API** object shape.
+- `network` (String) The network reference the broadcast is attached to. Accepts a JSON string matching the corresponding UniFi **Official API** object shape. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.
 - `site` (String) The name of the UniFi site where this resource should be applied. If not specified, the default site will be used.
 - `uapsd_enabled` (Boolean) Whether Unscheduled Automatic Power Save Delivery (U-APSD) is enabled. Defaults to `false`.
 

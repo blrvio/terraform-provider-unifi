@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
 )
 
 // marshalBody runs a model through AsUnifiModel and marshals the resulting
@@ -30,7 +32,7 @@ func TestWifiBroadcastAsUnifiModel_Standard(t *testing.T) {
 	m := &wifiBroadcastModel{
 		Name:                  types.StringValue("Corp-WiFi"),
 		Type:                  types.StringValue(wifiBroadcastTypeStandard),
-		SecurityConfiguration: types.StringValue(`{"type":"WPA2_PERSONAL","passphrase":"supersecret"}`),
+		SecurityConfiguration: ut.JSONStringValue(`{"type":"WPA2_PERSONAL","passphrase":"supersecret"}`),
 		// Enabled left null -> should default to true.
 	}
 	out := marshalBody(t, m)
@@ -55,8 +57,8 @@ func TestWifiBroadcastAsUnifiModel_DisabledIoT(t *testing.T) {
 		Type:                  types.StringValue(wifiBroadcastTypeIoT),
 		Enabled:               types.BoolValue(false),
 		HideName:              types.BoolValue(true),
-		SecurityConfiguration: types.StringValue(`{"type":"OPEN"}`),
-		ClientFilteringPolicy: types.StringValue(`{"action":"BLOCK","macAddressFilter":["aa:bb:cc:dd:ee:ff"]}`),
+		SecurityConfiguration: ut.JSONStringValue(`{"type":"OPEN"}`),
+		ClientFilteringPolicy: ut.JSONStringValue(`{"action":"BLOCK","macAddressFilter":["aa:bb:cc:dd:ee:ff"]}`),
 	}
 	out := marshalBody(t, m)
 	assert.Equal(t, "IOT_OPTIMIZED", out["type"])
@@ -88,8 +90,8 @@ func TestWifiBroadcastAsUnifiModel_InvalidNestedJSON(t *testing.T) {
 	m := &wifiBroadcastModel{
 		Name:                  types.StringValue("Bad-JSON"),
 		Type:                  types.StringValue(wifiBroadcastTypeStandard),
-		SecurityConfiguration: types.StringValue(`{"type":"OPEN"}`),
-		Network:               types.StringValue(`{not valid json`),
+		SecurityConfiguration: ut.JSONStringValue(`{"type":"OPEN"}`),
+		Network:               ut.JSONStringValue(`{not valid json`),
 	}
 	_, diags := m.AsUnifiModel(context.Background())
 	assert.True(t, diags.HasError())
@@ -155,4 +157,26 @@ func TestWifiBroadcastSecurityConfigurationSensitive(t *testing.T) {
 	attr, ok := resp.Schema.Attributes["security_configuration"]
 	require.True(t, ok)
 	assert.True(t, attr.IsSensitive())
+}
+
+// G6: a jsonencode()d config (alphabetical keys) must be semantically equal to the
+// SDK re-encoding the controller echo (struct order, explicit nulls).
+func TestWifiBroadcastSecurityConfigurationSemanticRoundTrip(t *testing.T) {
+	t.Parallel()
+	cfg := `{"fastRoamingEnabled":false,"groupRekeyIntervalSeconds":3600,"passphrase":"supersecret",` +
+		`"pmfMode":"OPTIONAL","saeConfiguration":{"anticloggingThresholdSeconds":5,"syncTimeSeconds":5},"type":"WPA2_WPA3_PERSONAL"}`
+	m := &wifiBroadcastModel{
+		Name: types.StringValue("x"), Type: types.StringValue("STANDARD"),
+		SecurityConfiguration: ut.JSONStringValue(cfg),
+		Network:               ut.JSONStringValue(`{"type":"NATIVE"}`),
+	}
+	body, diags := m.AsUnifiModel(context.Background())
+	require.False(t, diags.HasError(), "%v", diags)
+	b, ok := body.(*official.WifiBroadcastCreateOrUpdate)
+	require.True(t, ok)
+	echoed, d := ut.MarshalJSONValue("security_configuration", b.SecurityConfiguration)
+	require.False(t, d.HasError())
+	eq, d := ut.JSONStringValue(cfg).StringSemanticEquals(context.Background(), echoed)
+	require.False(t, d.HasError())
+	assert.True(t, eq, "config %s vs echo %s", cfg, echoed.ValueString())
 }

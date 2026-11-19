@@ -2,7 +2,6 @@ package officialfw
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -65,10 +64,10 @@ type officialFirewallPolicyModel struct {
 	IpsecFilter           types.String `tfsdk:"ipsec_filter"`
 	ConnectionStateFilter types.List   `tfsdk:"connection_state_filter"`
 	Index                 types.Int32  `tfsdk:"index"`
-	Source                types.String `tfsdk:"source"`
-	Destination           types.String `tfsdk:"destination"`
-	IPProtocolScope       types.String `tfsdk:"ip_protocol_scope"`
-	Schedule              types.String `tfsdk:"schedule"`
+	Source                ut.JSONValue `tfsdk:"source"`
+	Destination           ut.JSONValue `tfsdk:"destination"`
+	IPProtocolScope       ut.JSONValue `tfsdk:"ip_protocol_scope"`
+	Schedule              ut.JSONValue `tfsdk:"schedule"`
 }
 
 func strPtr(v types.String) *string {
@@ -121,24 +120,27 @@ func (m *officialFirewallPolicyModel) AsUnifiModel(ctx context.Context) (interfa
 		body.ConnectionStateFilter = csf
 	}
 
-	if err := json.Unmarshal([]byte(m.Source.ValueString()), &body.Source); err != nil {
-		diags.AddError("Invalid source", fmt.Sprintf("`source` is not valid JSON for a firewall policy source: %s", err))
-		return nil, diags
-	}
-	if err := json.Unmarshal([]byte(m.Destination.ValueString()), &body.Destination); err != nil {
-		diags.AddError("Invalid destination", fmt.Sprintf("`destination` is not valid JSON for a firewall policy destination: %s", err))
-		return nil, diags
-	}
-	if err := json.Unmarshal([]byte(m.IPProtocolScope.ValueString()), &body.IpProtocolScope); err != nil {
-		diags.AddError("Invalid ip_protocol_scope", fmt.Sprintf("`ip_protocol_scope` is not valid JSON for a firewall policy IP protocol scope: %s", err))
-		return nil, diags
-	}
-	if !m.Schedule.IsNull() && !m.Schedule.IsUnknown() {
-		var schedule official.FirewallSchedule
-		if err := json.Unmarshal([]byte(m.Schedule.ValueString()), &schedule); err != nil {
-			diags.AddError("Invalid schedule", fmt.Sprintf("`schedule` is not valid JSON for a firewall schedule: %s", err))
+	for _, f := range []struct {
+		name   string
+		value  ut.JSONValue
+		target any
+	}{
+		{"source", m.Source, &body.Source},
+		{"destination", m.Destination, &body.Destination},
+		{"ip_protocol_scope", m.IPProtocolScope, &body.IpProtocolScope},
+	} {
+		if _, d := ut.UnmarshalJSONValue(f.name, f.value, f.target); d.HasError() {
+			diags.Append(d...)
 			return nil, diags
 		}
+	}
+	var schedule official.FirewallSchedule
+	defined, d := ut.UnmarshalJSONValue("schedule", m.Schedule, &schedule)
+	diags.Append(d...)
+	if diags.HasError() {
+		return nil, diags
+	}
+	if defined {
 		body.Schedule = &schedule
 	}
 
@@ -228,39 +230,23 @@ func (m *officialFirewallPolicyModel) Merge(ctx context.Context, other interface
 		m.ConnectionStateFilter = types.ListNull(types.StringType)
 	}
 
-	source, srcDiags := marshalJSONString("source", policy.Source)
+	source, srcDiags := ut.MarshalJSONValue("source", policy.Source)
 	diags.Append(srcDiags...)
 	m.Source = source
 
-	destination, dstDiags := marshalJSONString("destination", policy.Destination)
+	destination, dstDiags := ut.MarshalJSONValue("destination", policy.Destination)
 	diags.Append(dstDiags...)
 	m.Destination = destination
 
-	scope, scopeDiags := marshalJSONString("ip_protocol_scope", policy.IpProtocolScope)
+	scope, scopeDiags := ut.MarshalJSONValue("ip_protocol_scope", policy.IpProtocolScope)
 	diags.Append(scopeDiags...)
 	m.IPProtocolScope = scope
 
-	if policy.Schedule != nil {
-		schedule, schedDiags := marshalJSONString("schedule", policy.Schedule)
-		diags.Append(schedDiags...)
-		m.Schedule = schedule
-	} else {
-		m.Schedule = types.StringNull()
-	}
+	schedule, schedDiags := ut.MarshalJSONValue("schedule", policy.Schedule)
+	diags.Append(schedDiags...)
+	m.Schedule = schedule
 
 	return diags
-}
-
-// marshalJSONString marshals an Official-API sub-object into a compact JSON
-// string value, reporting failures as a diagnostic tied to the attribute name.
-func marshalJSONString(attr string, v interface{}) (types.String, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	raw, err := json.Marshal(v)
-	if err != nil {
-		diags.AddError("Failed to encode "+attr, err.Error())
-		return types.StringNull(), diags
-	}
-	return types.StringValue(string(raw)), diags
 }
 
 type officialFirewallPolicyResource struct {
@@ -352,20 +338,24 @@ func (r *officialFirewallPolicyResource) Schema(_ context.Context, _ resource.Sc
 				Computed:            true,
 			},
 			"source": schema.StringAttribute{
-				MarkdownDescription: "JSON-encoded firewall policy source object (must include at least `zoneId`).",
+				MarkdownDescription: "JSON-encoded firewall policy source object (must include at least `zoneId`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.",
 				Required:            true,
+				CustomType:          ut.JSONType{},
 			},
 			"destination": schema.StringAttribute{
-				MarkdownDescription: "JSON-encoded firewall policy destination object (must include at least `zoneId`).",
+				MarkdownDescription: "JSON-encoded firewall policy destination object (must include at least `zoneId`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.",
 				Required:            true,
+				CustomType:          ut.JSONType{},
 			},
 			"ip_protocol_scope": schema.StringAttribute{
-				MarkdownDescription: "JSON-encoded IP protocol scope object (must include at least `ipVersion`).",
+				MarkdownDescription: "JSON-encoded IP protocol scope object (must include at least `ipVersion`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.",
 				Required:            true,
+				CustomType:          ut.JSONType{},
 			},
 			"schedule": schema.StringAttribute{
-				MarkdownDescription: "JSON-encoded firewall schedule object. If unset, the policy is always active.",
+				MarkdownDescription: "JSON-encoded firewall schedule object. If unset, the policy is always active. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.",
 				Optional:            true,
+				CustomType:          ut.JSONType{},
 			},
 		},
 	}

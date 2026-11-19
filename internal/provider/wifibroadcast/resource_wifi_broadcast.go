@@ -2,7 +2,6 @@ package wifibroadcast
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -53,14 +52,14 @@ type wifiBroadcastModel struct {
 	// The following attributes carry raw Official-API JSON object shapes. They
 	// are surfaced as JSON strings because the underlying types are complex
 	// (unions/nested objects) that don't map cleanly to a flat schema.
-	SecurityConfiguration    types.String `tfsdk:"security_configuration"`
-	Network                  types.String `tfsdk:"network"`
-	BasicDataRate            types.String `tfsdk:"basic_data_rate"`
-	BlackoutSchedule         types.String `tfsdk:"blackout_schedule"`
-	BroadcastingDeviceFilter types.String `tfsdk:"broadcasting_device_filter"`
-	ClientFilteringPolicy    types.String `tfsdk:"client_filtering_policy"`
-	MdnsProxy                types.String `tfsdk:"mdns_proxy"`
-	MulticastFilteringPolicy types.String `tfsdk:"multicast_filtering_policy"`
+	SecurityConfiguration    ut.JSONValue `tfsdk:"security_configuration"`
+	Network                  ut.JSONValue `tfsdk:"network"`
+	BasicDataRate            ut.JSONValue `tfsdk:"basic_data_rate"`
+	BlackoutSchedule         ut.JSONValue `tfsdk:"blackout_schedule"`
+	BroadcastingDeviceFilter ut.JSONValue `tfsdk:"broadcasting_device_filter"`
+	ClientFilteringPolicy    ut.JSONValue `tfsdk:"client_filtering_policy"`
+	MdnsProxy                ut.JSONValue `tfsdk:"mdns_proxy"`
+	MulticastFilteringPolicy ut.JSONValue `tfsdk:"multicast_filtering_policy"`
 }
 
 // boolWithDefault returns the configured bool, falling back to def when the
@@ -74,34 +73,23 @@ func boolWithDefault(v types.Bool, def bool) bool {
 
 // decodeJSONPtr unmarshals an optional JSON-string attribute into a pointer
 // field on the Official-API body, leaving it nil when the attribute is empty.
-func decodeJSONPtr[T any](v types.String, dst **T, attr string) diag.Diagnostics {
-	var diags diag.Diagnostics
-	if ut.IsEmptyString(v) {
-		*dst = nil
-		return diags
+func decodeJSONPtr[T any](v ut.JSONValue, dst **T, attr string) diag.Diagnostics {
+	*dst = nil
+	if v.IsNull() || v.IsUnknown() || v.ValueString() == "" {
+		return nil
 	}
 	var out T
-	if err := json.Unmarshal([]byte(v.ValueString()), &out); err != nil {
-		diags.AddError("Invalid "+attr+" JSON", err.Error())
-		return diags
+	defined, diags := ut.UnmarshalJSONValue(attr, v, &out)
+	if defined {
+		*dst = &out
 	}
-	*dst = &out
 	return diags
 }
 
 // marshalJSONPtr renders an optional pointer field back to a compact JSON
 // string, or null when the pointer is nil.
-func marshalJSONPtr[T any](p *T, attr string) (types.String, diag.Diagnostics) {
-	var diags diag.Diagnostics
-	if p == nil {
-		return types.StringNull(), diags
-	}
-	raw, err := json.Marshal(p)
-	if err != nil {
-		diags.AddError("Failed to encode "+attr, err.Error())
-		return types.StringNull(), diags
-	}
-	return types.StringValue(string(raw)), diags
+func marshalJSONPtr[T any](p *T, attr string) (ut.JSONValue, diag.Diagnostics) {
+	return ut.MarshalJSONValue(attr, p)
 }
 
 // AsUnifiModel builds the Official-API create/update body as a PLAIN struct
@@ -124,12 +112,12 @@ func (m *wifiBroadcastModel) AsUnifiModel(_ context.Context) (interface{}, diag.
 	}
 
 	// security_configuration is required (a complex union sent verbatim).
-	if ut.IsEmptyString(m.SecurityConfiguration) {
+	if m.SecurityConfiguration.IsNull() || m.SecurityConfiguration.IsUnknown() || m.SecurityConfiguration.ValueString() == "" {
 		diags.AddError("Missing required attribute", "`security_configuration` must be set.")
 		return nil, diags
 	}
-	if err := json.Unmarshal([]byte(m.SecurityConfiguration.ValueString()), &body.SecurityConfiguration); err != nil {
-		diags.AddError("Invalid security_configuration JSON", err.Error())
+	if _, d := ut.UnmarshalJSONValue("security_configuration", m.SecurityConfiguration, &body.SecurityConfiguration); d.HasError() {
+		diags.Append(d...)
 		return nil, diags
 	}
 
@@ -177,14 +165,12 @@ func (m *wifiBroadcastModel) Merge(_ context.Context, other interface{}) diag.Di
 	m.Channel2gLockedTo6 = types.BoolValue(d.Channel2gLockedTo6)
 	m.DtimPeriod2gLockedTo3 = types.BoolValue(d.DtimPeriod2gLockedTo3)
 
-	raw, err := json.Marshal(d.SecurityConfiguration)
-	if err != nil {
-		diags.AddError("Failed to encode security_configuration", err.Error())
+	var sd diag.Diagnostics
+	m.SecurityConfiguration, sd = ut.MarshalJSONValue("security_configuration", d.SecurityConfiguration)
+	diags.Append(sd...)
+	if diags.HasError() {
 		return diags
 	}
-	m.SecurityConfiguration = types.StringValue(string(raw))
-
-	var sd diag.Diagnostics
 	m.Network, sd = marshalJSONPtr(d.Network, "network")
 	diags.Append(sd...)
 	m.BasicDataRate, sd = marshalJSONPtr(d.BasicDataRateKbpsByFrequencyGHz, "basic_data_rate")
@@ -221,7 +207,8 @@ func NewWifiBroadcastResource() resource.Resource {
 }
 
 func (r *wifiBroadcastResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	jsonNote := " Accepts a JSON string matching the corresponding UniFi **Official API** object shape."
+	jsonNote := " Accepts a JSON string matching the corresponding UniFi **Official API** object shape." +
+		" Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works."
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a WiFi broadcast (SSID) via the UniFi **Official API** (`integration/v1`). " +
 			"Requires a controller running version 10.1.78 or later with API-key authentication.\n\n" +
@@ -294,36 +281,44 @@ func (r *wifiBroadcastResource) Schema(_ context.Context, _ resource.SchemaReque
 				MarkdownDescription: "The WiFi security configuration." + jsonNote +
 					" This is a required complex union (e.g. `{\"type\":\"WPA2_PERSONAL\",\"passphrase\":\"...\"}`)." +
 					" Sensitive, because it carries the passphrase: plans show `(sensitive value)` for any change to it.",
+				CustomType: ut.JSONType{},
 				Required:   true,
 				Sensitive:  true,
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"network": schema.StringAttribute{
 				MarkdownDescription: "The network reference the broadcast is attached to." + jsonNote,
+				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
 			"basic_data_rate": schema.StringAttribute{
 				MarkdownDescription: "The basic data rate configuration by frequency (kbps)." + jsonNote,
+				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
 			"blackout_schedule": schema.StringAttribute{
 				MarkdownDescription: "The blackout schedule configuration." + jsonNote,
+				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
 			"broadcasting_device_filter": schema.StringAttribute{
 				MarkdownDescription: "The broadcasting device filter." + jsonNote,
+				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
 			"client_filtering_policy": schema.StringAttribute{
 				MarkdownDescription: "The client (MAC) filtering policy." + jsonNote,
+				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
 			"mdns_proxy": schema.StringAttribute{
 				MarkdownDescription: "The mDNS proxy configuration." + jsonNote,
+				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
 			"multicast_filtering_policy": schema.StringAttribute{
 				MarkdownDescription: "The multicast filtering policy." + jsonNote,
+				CustomType:          ut.JSONType{},
 				Optional:            true,
 			},
 		},

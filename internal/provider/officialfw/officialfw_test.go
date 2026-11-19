@@ -97,9 +97,9 @@ func TestFirewallPolicyAsUnifiModel_Body(t *testing.T) {
 	m := &officialFirewallPolicyModel{
 		Name:            types.StringValue("allow-lan-to-wan"),
 		Action:          types.StringValue(firewallPolicyActionAllow),
-		Source:          types.StringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
-		Destination:     types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
-		IPProtocolScope: types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+		Source:          ut.JSONStringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
+		Destination:     ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope: ut.JSONStringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
 		// Enabled null -> defaults true; LoggingEnabled null -> defaults false.
 	}
 	body, diags := m.AsUnifiModel(context.Background())
@@ -142,9 +142,9 @@ func TestFirewallPolicyAsUnifiModel_WithFilters(t *testing.T) {
 		Description:           types.StringValue("drop invalid"),
 		IpsecFilter:           types.StringValue(firewallPolicyIpsecMatchEncrypted),
 		ConnectionStateFilter: listOfStrings(t, firewallPolicyConnStateNew, firewallPolicyConnStateInvalid),
-		Source:                types.StringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
-		Destination:           types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
-		IPProtocolScope:       types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+		Source:                ut.JSONStringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
+		Destination:           ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope:       ut.JSONStringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
 	}
 	body, diags := m.AsUnifiModel(context.Background())
 	require.False(t, diags.HasError(), "AsUnifiModel diagnostics: %v", diags)
@@ -169,9 +169,9 @@ func TestFirewallPolicyAsUnifiModel_InvalidSourceJSON(t *testing.T) {
 	m := &officialFirewallPolicyModel{
 		Name:            types.StringValue("bad"),
 		Action:          types.StringValue(firewallPolicyActionAllow),
-		Source:          types.StringValue(`{not json`),
-		Destination:     types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
-		IPProtocolScope: types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+		Source:          ut.JSONStringValue(`{not json`),
+		Destination:     ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope: ut.JSONStringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
 	}
 	_, diags := m.AsUnifiModel(context.Background())
 	assert.True(t, diags.HasError(), "expected error for invalid source JSON")
@@ -327,9 +327,9 @@ func basePolicyModel() *officialFirewallPolicyModel {
 	return &officialFirewallPolicyModel{
 		Name:            types.StringValue("p"),
 		Action:          types.StringValue(firewallPolicyActionAllow),
-		Source:          types.StringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
-		Destination:     types.StringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
-		IPProtocolScope: types.StringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
+		Source:          ut.JSONStringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`),
+		Destination:     ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`),
+		IPProtocolScope: ut.JSONStringValue(`{"ipVersion":"BOTH","type":"ALL"}`),
 	}
 }
 
