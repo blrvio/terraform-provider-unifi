@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
-	"github.com/blrvio/go-unifi/v10/unifi/official"
+	"github.com/blrvio/go-unifi/v11/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi/official"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"

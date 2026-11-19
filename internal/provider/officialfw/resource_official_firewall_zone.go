@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
-	"github.com/blrvio/go-unifi/v10/unifi/official"
+	"github.com/blrvio/go-unifi/v11/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi/official"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"

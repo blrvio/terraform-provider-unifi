@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
-	"github.com/blrvio/go-unifi/v10/unifi/official"
+	"github.com/blrvio/go-unifi/v11/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi/official"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )

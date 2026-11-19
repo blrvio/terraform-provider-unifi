@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/blrvio/go-unifi/v10/unifi"
+	"github.com/blrvio/go-unifi/v11/unifi"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -25,12 +25,13 @@ type switchStackDataSource struct {
 }
 
 type switchStackModel struct {
-	Site            types.String `tfsdk:"site"`
-	ID              types.String `tfsdk:"id"`
-	Name            types.String `tfsdk:"name"`
-	MetadataOrigin  types.String `tfsdk:"metadata_origin"`
-	MemberDeviceIDs []string     `tfsdk:"member_device_ids"`
-	JSON            types.String `tfsdk:"json"`
+	Site           types.String           `tfsdk:"site"`
+	ID             types.String           `tfsdk:"id"`
+	Name           types.String           `tfsdk:"name"`
+	MetadataOrigin types.String           `tfsdk:"metadata_origin"`
+	DeviceID       types.String           `tfsdk:"device_id"`
+	Units          []switchStackUnitModel `tfsdk:"units"`
+	JSON           types.String           `tfsdk:"json"`
 }
 
 // NewSwitchStackDataSource returns the unifi_switch_stack data source, which
@@ -44,33 +45,16 @@ func (d *switchStackDataSource) Metadata(_ context.Context, req datasource.Metad
 }
 
 func (d *switchStackDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	attrs := switchStackItemAttributes()
+	attrs["site"] = siteAttribute()
+	attrs["id"] = schema.StringAttribute{
+		MarkdownDescription: "The UUID of the switch stack to look up.",
+		Required:            true,
+	}
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Fetches a single switch stack by id via the UniFi **Official API** (`integration/v1`). " +
 			"Read-only. Requires a controller running version 10.1.78 or later with API-key authentication.",
-		Attributes: map[string]schema.Attribute{
-			"site": siteAttribute(),
-			"id": schema.StringAttribute{
-				MarkdownDescription: "The UUID of the switch stack to look up.",
-				Required:            true,
-			},
-			"name": schema.StringAttribute{
-				MarkdownDescription: "The switch stack name.",
-				Computed:            true,
-			},
-			"metadata_origin": schema.StringAttribute{
-				MarkdownDescription: "The origin of the switch stack entity (e.g. `USER_DEFINED`).",
-				Computed:            true,
-			},
-			"member_device_ids": schema.ListAttribute{
-				MarkdownDescription: "The UUIDs of the devices that are members of the stack.",
-				Computed:            true,
-				ElementType:         types.StringType,
-			},
-			"json": schema.StringAttribute{
-				MarkdownDescription: "The full switch stack record, including nested lags, serialized as a JSON string.",
-				Computed:            true,
-			},
-		},
+		Attributes: attrs,
 	}
 }
 
@@ -118,7 +102,8 @@ func (d *switchStackDataSource) Read(ctx context.Context, req datasource.ReadReq
 	state.ID = item.ID
 	state.Name = item.Name
 	state.MetadataOrigin = item.MetadataOrigin
-	state.MemberDeviceIDs = item.MemberDeviceIDs
+	state.DeviceID = item.DeviceID
+	state.Units = item.Units
 	state.JSON = item.JSON
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }

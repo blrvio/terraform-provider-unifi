@@ -3,10 +3,12 @@ package officialro
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
-	"github.com/blrvio/go-unifi/v10/unifi/official"
+	"github.com/blrvio/go-unifi/v11/unifi/official"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
@@ -36,42 +38,147 @@ type lagDetailsModel struct {
 	JSON           types.String     `tfsdk:"json"`
 }
 
+// lagMemberModel is one member of a LAG. Device-based LAGs (LOCAL,
+// MULTI_CHASSIS) identify the member by device_id; switch-stack LAGs identify
+// it by stack unit (unit_id, unit_mac_address). The fields that do not apply to
+// the LAG's type are null.
 type lagMemberModel struct {
-	DeviceID types.String `tfsdk:"device_id"`
-	PortIdxs []int64      `tfsdk:"port_idxs"`
+	DeviceID       types.String `tfsdk:"device_id"`
+	UnitID         types.Int64  `tfsdk:"unit_id"`
+	UnitMacAddress types.String `tfsdk:"unit_mac_address"`
+	PortIdxs       []int64      `tfsdk:"port_idxs"`
 }
 
-// mapLagMembers converts Official-API LAG members into their Framework models.
-func mapLagMembers(members []official.LagMember) []lagMemberModel {
+// LAG type discriminators of the Official-API LAGDetails union.
+const (
+	lagTypeLocal        = "LOCAL"
+	lagTypeMultiChassis = "MULTI_CHASSIS"
+	lagTypeSwitchStack  = "SWITCH_STACK"
+)
+
+func portIdxsToInt64(idxs []int32) []int64 {
+	out := make([]int64, 0, len(idxs))
+	for _, idx := range idxs {
+		out = append(out, int64(idx))
+	}
+	return out
+}
+
+// sliceOrEmpty dereferences an optional slice, mapping an absent or null one
+// to an empty (non-nil) slice so it serializes as [] rather than null.
+func sliceOrEmpty[T any](p *[]T) []T {
+	if p == nil || *p == nil {
+		return []T{}
+	}
+	return *p
+}
+
+// mapDeviceLagMembers converts device-based LAG members (LOCAL, MULTI_CHASSIS).
+func mapDeviceLagMembers(members []official.LagMember) []lagMemberModel {
 	out := make([]lagMemberModel, 0, len(members))
 	for _, m := range members {
-		idxs := make([]int64, 0, len(m.PortIdxs))
-		for _, idx := range m.PortIdxs {
-			idxs = append(idxs, int64(idx))
-		}
 		out = append(out, lagMemberModel{
-			DeviceID: types.StringValue(m.DeviceId.String()),
-			PortIdxs: idxs,
+			DeviceID:       types.StringValue(m.DeviceId.String()),
+			UnitID:         types.Int64Null(),
+			UnitMacAddress: types.StringNull(),
+			PortIdxs:       portIdxsToInt64(m.PortIdxs),
 		})
 	}
 	return out
 }
 
+// mapSwitchStackLagMembers converts switch-stack LAG members, which reference a
+// stack unit instead of a device.
+func mapSwitchStackLagMembers(members []official.SwitchStackLagMember) []lagMemberModel {
+	out := make([]lagMemberModel, 0, len(members))
+	for _, m := range members {
+		out = append(out, lagMemberModel{
+			DeviceID:       types.StringNull(),
+			UnitID:         types.Int64Value(int64(m.UnitId)),
+			UnitMacAddress: types.StringValue(m.UnitMacAddress),
+			PortIdxs:       portIdxsToInt64(m.PortIdxs),
+		})
+	}
+	return out
+}
+
+// lagMembers reads a LAG's members from its type-specific variant (selected by
+// the type discriminator) and returns their models plus their JSON
+// serialization for members_json. An unrecognized LAG type does not fail the
+// read: it yields no members and a warning, and the full record stays
+// available in the json attribute.
+func lagMembers(l official.LAGDetails) ([]lagMemberModel, string, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	var (
+		models []lagMemberModel
+		raw    any
+	)
+	switch l.Type {
+	case lagTypeLocal:
+		v, err := l.AsLocalLagGlobal()
+		if err != nil {
+			diags.AddError("Error decoding switch LAG", fmt.Sprintf("LAG %s (%s): %s", l.Id, l.Type, err))
+			return nil, "", diags
+		}
+		members := sliceOrEmpty(v.Members)
+		models, raw = mapDeviceLagMembers(members), members
+	case lagTypeMultiChassis:
+		v, err := l.AsMcLagGlobal()
+		if err != nil {
+			diags.AddError("Error decoding switch LAG", fmt.Sprintf("LAG %s (%s): %s", l.Id, l.Type, err))
+			return nil, "", diags
+		}
+		members := sliceOrEmpty(v.Members)
+		models, raw = mapDeviceLagMembers(members), members
+	case lagTypeSwitchStack:
+		v, err := l.AsSwitchStackLagGlobal()
+		if err != nil {
+			diags.AddError("Error decoding switch LAG", fmt.Sprintf("LAG %s (%s): %s", l.Id, l.Type, err))
+			return nil, "", diags
+		}
+		members := sliceOrEmpty(v.Members)
+		models, raw = mapSwitchStackLagMembers(members), members
+	default:
+		diags.AddWarning(
+			"Unsupported switch LAG type",
+			fmt.Sprintf("LAG %s has type %q, which this provider version does not recognize. Its members are "+
+				"reported as empty; the full record is still available in the json attribute.", l.Id, l.Type),
+		)
+		models, raw = []lagMemberModel{}, []struct{}{}
+	}
+	js, err := json.Marshal(raw)
+	if err != nil {
+		diags.AddError("Error serializing switch LAG members", err.Error())
+		return nil, "", diags
+	}
+	return models, string(js), diags
+}
+
 // mapLagDetails converts an Official-API LAG record into its Framework model,
-// serializing the full record into the json attribute.
-func mapLagDetails(l official.LAGDetails) (lagDetailsModel, error) {
+// reading the members from the LAG's variant and serializing the full record
+// into the json attribute.
+func mapLagDetails(l official.LAGDetails) (lagDetailsModel, diag.Diagnostics) {
+	members, _, diags := lagMembers(l)
+	if diags.HasError() {
+		return lagDetailsModel{}, diags
+	}
 	raw, err := json.Marshal(l)
 	if err != nil {
-		return lagDetailsModel{}, err
+		diags.AddError("Error serializing switch LAG", err.Error())
+		return lagDetailsModel{}, diags
 	}
 	return lagDetailsModel{
 		ID:             types.StringValue(l.Id.String()),
 		Type:           types.StringValue(l.Type),
 		MetadataOrigin: types.StringValue(l.Metadata.Origin),
-		Members:        mapLagMembers(l.Members),
+		Members:        members,
 		JSON:           types.StringValue(string(raw)),
-	}, nil
+	}, diags
 }
+
+// lagTypeDescription documents the LAG type attribute of both LAG data sources.
+const lagTypeDescription = "The LAG type: `LOCAL` (ports on one switch), `MULTI_CHASSIS` (MC-LAG across two " +
+	"switches) or `SWITCH_STACK` (ports across units of a switch stack)."
 
 // NewSwitchLAGsDataSource returns the unifi_switch_lags data source, which lists
 // switch link-aggregation groups on a site via the Official API. The singular
@@ -102,7 +209,7 @@ func (d *switchLAGsDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 							Computed:            true,
 						},
 						"type": schema.StringAttribute{
-							MarkdownDescription: "The LAG type (e.g. `LOCAL`, `MC_LAG`, `SWITCH_STACK`).",
+							MarkdownDescription: lagTypeDescription,
 							Computed:            true,
 						},
 						"metadata_origin": schema.StringAttribute{
@@ -110,16 +217,27 @@ func (d *switchLAGsDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 							Computed:            true,
 						},
 						"members": schema.ListNestedAttribute{
-							MarkdownDescription: "The LAG members.",
-							Computed:            true,
+							MarkdownDescription: "The LAG members, read from the type-specific LAG variant. Empty when " +
+								"the controller reports none or the LAG type is not recognized.",
+							Computed: true,
 							NestedObject: schema.NestedAttributeObject{
 								Attributes: map[string]schema.Attribute{
 									"device_id": schema.StringAttribute{
-										MarkdownDescription: "The UUID of the member device.",
+										MarkdownDescription: "The UUID of the member device, for `LOCAL` and `MULTI_CHASSIS` " +
+											"LAGs. Null for `SWITCH_STACK` LAGs.",
+										Computed: true,
+									},
+									"unit_id": schema.Int64Attribute{
+										MarkdownDescription: "The stack unit id of the member (see `units` on " +
+											"`unifi_switch_stack`), for `SWITCH_STACK` LAGs. Null otherwise.",
+										Computed: true,
+									},
+									"unit_mac_address": schema.StringAttribute{
+										MarkdownDescription: "The MAC address of the member stack unit, for `SWITCH_STACK` LAGs. Null otherwise.",
 										Computed:            true,
 									},
 									"port_idxs": schema.ListAttribute{
-										MarkdownDescription: "The aggregated port indexes on the member device.",
+										MarkdownDescription: "The aggregated port indexes on the member device or unit.",
 										Computed:            true,
 										ElementType:         types.Int64Type,
 									},
@@ -159,9 +277,9 @@ func (d *switchLAGsDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	state.Site = types.StringValue(siteName)
 	state.LAGs = make([]lagDetailsModel, 0, len(lags))
 	for _, l := range lags {
-		model, err := mapLagDetails(l)
-		if err != nil {
-			resp.Diagnostics.AddError("Error serializing switch LAG", err.Error())
+		model, diags := mapLagDetails(l)
+		resp.Diagnostics.Append(diags...)
+		if diags.HasError() {
 			return
 		}
 		state.LAGs = append(state.LAGs, model)
