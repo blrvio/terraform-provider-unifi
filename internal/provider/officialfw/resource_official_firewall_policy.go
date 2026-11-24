@@ -384,22 +384,22 @@ func (r *officialFirewallPolicyResource) Schema(_ context.Context, _ resource.Sc
 				Computed:            true,
 			},
 			"source": schema.StringAttribute{
-				MarkdownDescription: "JSON-encoded firewall policy source object (must include at least `zoneId`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.",
+				MarkdownDescription: "JSON-encoded firewall policy source object (must include at least `zoneId`). Compared semantically: key order, whitespace, null-valued keys and the order of `networkIds`/`macAddresses` (which the controller returns in its own order) do not cause a diff, so `jsonencode()` works.",
 				Required:            true,
 				CustomType:          ut.JSONType{},
 			},
 			"destination": schema.StringAttribute{
-				MarkdownDescription: "JSON-encoded firewall policy destination object (must include at least `zoneId`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.",
+				MarkdownDescription: "JSON-encoded firewall policy destination object (must include at least `zoneId`). Compared semantically: key order, whitespace, null-valued keys and the order of `networkIds`/`macAddresses` (which the controller returns in its own order) do not cause a diff, so `jsonencode()` works.",
 				Required:            true,
 				CustomType:          ut.JSONType{},
 			},
 			"ip_protocol_scope": schema.StringAttribute{
-				MarkdownDescription: "JSON-encoded IP protocol scope object (must include at least `ipVersion`). Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.",
+				MarkdownDescription: "JSON-encoded IP protocol scope object (must include at least `ipVersion`). Compared semantically: key order, whitespace, null-valued keys and the order of `networkIds`/`macAddresses` (which the controller returns in its own order) do not cause a diff, so `jsonencode()` works.",
 				Required:            true,
 				CustomType:          ut.JSONType{},
 			},
 			"schedule": schema.StringAttribute{
-				MarkdownDescription: "JSON-encoded firewall schedule object. If unset, the policy is always active. Compared semantically: key order, whitespace and null-valued keys do not cause a diff, so `jsonencode()` works.",
+				MarkdownDescription: "JSON-encoded firewall schedule object. If unset, the policy is always active. Compared semantically: key order, whitespace, null-valued keys and the order of `networkIds`/`macAddresses` (which the controller returns in its own order) do not cause a diff, so `jsonencode()` works.",
 				Optional:            true,
 				CustomType:          ut.JSONType{},
 			},

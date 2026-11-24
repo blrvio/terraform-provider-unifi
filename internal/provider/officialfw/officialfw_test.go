@@ -572,3 +572,21 @@ func TestPlanAllowReturnTraffic(t *testing.T) {
 		})
 	}
 }
+
+// G21: zone members come back in the controller's order; the same set keeps the planned order.
+func TestFirewallZoneMerge_KeepsPlannedOrder(t *testing.T) {
+	t.Parallel()
+	raw := `{"id":"33333333-3333-3333-3333-333333333333","name":"Internal",` +
+		`"networkIds":["55555555-5555-5555-5555-555555555555","44444444-4444-4444-4444-444444444444"]}`
+	var zone official.FirewallZone
+	require.NoError(t, json.Unmarshal([]byte(raw), &zone))
+
+	planned := []string{"44444444-4444-4444-4444-444444444444", "55555555-5555-5555-5555-555555555555"}
+	m := &officialFirewallZoneModel{NetworkIDs: listOfStrings(t, planned...)}
+	diags := m.Merge(context.Background(), &zone)
+	require.False(t, diags.HasError(), "Merge diagnostics: %v", diags)
+
+	var got []string
+	m.NetworkIDs.ElementsAs(context.Background(), &got, false)
+	assert.Equal(t, planned, got)
+}

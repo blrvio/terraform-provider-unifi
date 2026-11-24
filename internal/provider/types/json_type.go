@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -112,9 +113,13 @@ func (v JSONValue) StringSemanticEquals(_ context.Context, newValuable basetypes
 	return JSONSemanticallyEqual(v.ValueString(), newValue.ValueString()), diags
 }
 
+// unorderedJSONKeys hold arrays of IDs the controller stores as sets and returns in its own order
+// (e.g. firewall policy networkFilter.networkIds), so their order is not significant.
+var unorderedJSONKeys = map[string]bool{"networkIds": true, "macAddresses": true}
+
 // JSONSemanticallyEqual reports whether a and b decode to the same JSON document,
-// ignoring whitespace, key order and null-valued object keys. Invalid JSON compares
-// byte for byte.
+// ignoring whitespace, key order, null-valued object keys and the order of the
+// unorderedJSONKeys arrays. Invalid JSON compares byte for byte.
 func JSONSemanticallyEqual(a, b string) bool {
 	if a == b {
 		return true
@@ -123,7 +128,50 @@ func JSONSemanticallyEqual(a, b string) bool {
 	if json.Unmarshal([]byte(a), &da) != nil || json.Unmarshal([]byte(b), &db) != nil {
 		return false
 	}
-	return reflect.DeepEqual(dropJSONNulls(da), dropJSONNulls(db))
+	return reflect.DeepEqual(sortUnorderedJSON(dropJSONNulls(da)), sortUnorderedJSON(dropJSONNulls(db)))
+}
+
+// sortUnorderedJSON sorts the string arrays under unorderedJSONKeys, for comparison only.
+func sortUnorderedJSON(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			if arr, ok := val.([]any); ok && unorderedJSONKeys[k] {
+				if strs, ok := stringsOf(arr); ok {
+					sort.Strings(strs)
+					sorted := make([]any, len(strs))
+					for i, s := range strs {
+						sorted[i] = s
+					}
+					out[k] = sorted
+					continue
+				}
+			}
+			out[k] = sortUnorderedJSON(val)
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, val := range t {
+			out[i] = sortUnorderedJSON(val)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func stringsOf(arr []any) ([]string, bool) {
+	out := make([]string, len(arr))
+	for i, e := range arr {
+		s, ok := e.(string)
+		if !ok {
+			return nil, false
+		}
+		out[i] = s
+	}
+	return out, true
 }
 
 func dropJSONNulls(v any) any {
