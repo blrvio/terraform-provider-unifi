@@ -200,6 +200,13 @@ func (m *dnsPolicyModel) Merge(_ context.Context, other interface{}) diag.Diagno
 	m.Type = types.StringValue(policy.Type)
 	m.Enabled = types.BoolValue(policy.Enabled)
 
+	// Fields the type does not carry must be null, not left unknown from the plan: priority/weight/ttl_seconds
+	// are Computed, so after a create they would otherwise be "invalid result object after apply".
+	m.TTLSeconds, m.Priority, m.Weight, m.Port = types.Int32Null(), types.Int32Null(), types.Int32Null(), types.Int32Null()
+	m.IPv4Address, m.IPv6Address, m.TargetDomain = types.StringNull(), types.StringNull(), types.StringNull()
+	m.MailServerDomain, m.Service, m.Protocol = types.StringNull(), types.StringNull(), types.StringNull()
+	m.ServerDomain, m.Text, m.IPAddress = types.StringNull(), types.StringNull(), types.StringNull()
+
 	switch policy.Type {
 	case dnsPolicyTypeA:
 		v, err := policy.AsDnsARecord()
