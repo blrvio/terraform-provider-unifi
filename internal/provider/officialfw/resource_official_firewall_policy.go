@@ -21,6 +21,7 @@ import (
 
 	"github.com/blrvio/terraform-provider-unifi/internal/provider/base"
 	ut "github.com/blrvio/terraform-provider-unifi/internal/provider/types"
+	"github.com/blrvio/terraform-provider-unifi/internal/provider/validators"
 )
 
 // Firewall policy action discriminators, matching the go-unifi Official API union.
@@ -45,18 +46,20 @@ const (
 )
 
 var (
-	_ resource.Resource                = &officialFirewallPolicyResource{}
-	_ resource.ResourceWithConfigure   = &officialFirewallPolicyResource{}
-	_ resource.ResourceWithImportState = &officialFirewallPolicyResource{}
-	_ resource.ResourceWithModifyPlan  = &officialFirewallPolicyResource{}
-	_ base.ResourceModel               = &officialFirewallPolicyModel{}
-	_ base.Resource                    = &officialFirewallPolicyResource{}
+	_ resource.Resource                     = &officialFirewallPolicyResource{}
+	_ resource.ResourceWithConfigure        = &officialFirewallPolicyResource{}
+	_ resource.ResourceWithImportState      = &officialFirewallPolicyResource{}
+	_ resource.ResourceWithModifyPlan       = &officialFirewallPolicyResource{}
+	_ resource.ResourceWithConfigValidators = &officialFirewallPolicyResource{}
+	_ base.ResourceModel                    = &officialFirewallPolicyModel{}
+	_ base.Resource                         = &officialFirewallPolicyResource{}
 )
 
 type officialFirewallPolicyModel struct {
 	base.Model
 	Name                  types.String `tfsdk:"name"`
 	Action                types.String `tfsdk:"action"`
+	AllowReturnTraffic    types.Bool   `tfsdk:"allow_return_traffic"`
 	Enabled               types.Bool   `tfsdk:"enabled"`
 	LoggingEnabled        types.Bool   `tfsdk:"logging_enabled"`
 	ReportFlowEnabled     types.Bool   `tfsdk:"report_flow_enabled"`
@@ -90,9 +93,14 @@ func strFromPtr(p *string) types.String {
 // as JSON strings and decoded into their Official-API types here.
 func (m *officialFirewallPolicyModel) AsUnifiModel(ctx context.Context) (interface{}, diag.Diagnostics) {
 	var diags diag.Diagnostics
+	action, err := m.actionBody()
+	if err != nil {
+		diags.AddError("Failed to encode firewall policy action", err.Error())
+		return nil, diags
+	}
 	body := &official.FirewallPolicyCreateOrUpdate{
 		Name:           m.Name.ValueString(),
-		Action:         official.FirewallPolicyAction{Type: m.Action.ValueString()},
+		Action:         action,
 		Enabled:        m.enabledValue(),
 		LoggingEnabled: m.loggingEnabledValue(),
 		Description:    strPtr(m.Description),
@@ -145,6 +153,24 @@ func (m *officialFirewallPolicyModel) AsUnifiModel(ctx context.Context) (interfa
 	}
 
 	return body, diags
+}
+
+// actionBody builds the action union. The controller rejects an ALLOW without allowReturnTraffic, so an
+// unknown value (create without the attribute) is sent as false.
+func (m *officialFirewallPolicyModel) actionBody() (official.FirewallPolicyAction, error) {
+	action := official.FirewallPolicyAction{Type: m.Action.ValueString()}
+	if action.Type != firewallPolicyActionAllow {
+		return action, nil
+	}
+	allowReturn := false
+	if ut.IsDefined(m.AllowReturnTraffic) {
+		allowReturn = m.AllowReturnTraffic.ValueBool()
+	}
+	err := action.FromFirewallPolicyActionAllow(official.FirewallPolicyActionAllow{
+		Type:               firewallPolicyActionAllow,
+		AllowReturnTraffic: &allowReturn,
+	})
+	return action, err
 }
 
 func (m *officialFirewallPolicyModel) enabledValue() bool {
@@ -203,6 +229,17 @@ func (m *officialFirewallPolicyModel) Merge(ctx context.Context, other interface
 	m.SetID(policy.Id.String())
 	m.Name = types.StringValue(policy.Name)
 	m.Action = types.StringValue(policy.Action.Type)
+	m.AllowReturnTraffic = types.BoolNull()
+	if policy.Action.Type == firewallPolicyActionAllow {
+		allow, err := policy.Action.AsFirewallPolicyActionAllow()
+		if err != nil {
+			diags.AddError("Failed to decode firewall policy action", err.Error())
+			return diags
+		}
+		if allow.AllowReturnTraffic != nil {
+			m.AllowReturnTraffic = types.BoolValue(*allow.AllowReturnTraffic)
+		}
+	}
 	m.Enabled = types.BoolValue(policy.Enabled)
 	m.LoggingEnabled = types.BoolValue(policy.LoggingEnabled)
 	m.ReportFlowEnabled = types.BoolValue(policy.ReportFlowEnabled)
@@ -285,6 +322,15 @@ func (r *officialFirewallPolicyResource) Schema(_ context.Context, _ resource.Sc
 					stringvalidator.OneOf(firewallPolicyActionAllow, firewallPolicyActionBlock, firewallPolicyActionReject),
 				},
 			},
+			"allow_return_traffic": schema.BoolAttribute{
+				MarkdownDescription: "Only for `action = \"ALLOW\"`: have the controller create a derived policy for the " +
+					"mirrored zone pair that allows the return traffic (shown as \"<name> (Return)\"). The controller " +
+					"requires this on every ALLOW policy. When omitted, `false` is sent on create and the value read from " +
+					"the controller is kept afterwards, so an existing policy is not changed. Must be unset for `BLOCK` " +
+					"and `REJECT`, where it is always null.",
+				Optional: true,
+				Computed: true,
+			},
 			"enabled": schema.BoolAttribute{
 				MarkdownDescription: "Whether the firewall policy is enabled. Defaults to `true`.",
 				Optional:            true,
@@ -361,7 +407,14 @@ func (r *officialFirewallPolicyResource) Schema(_ context.Context, _ resource.Sc
 	}
 }
 
-func (r *officialFirewallPolicyResource) ModifyPlan(_ context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+func (r *officialFirewallPolicyResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		validators.RequiredNoneIf(path.MatchRoot("action"), types.StringValue(firewallPolicyActionBlock), path.MatchRoot("allow_return_traffic")),
+		validators.RequiredNoneIf(path.MatchRoot("action"), types.StringValue(firewallPolicyActionReject), path.MatchRoot("allow_return_traffic")),
+	}
+}
+
+func (r *officialFirewallPolicyResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
 	// Destroy plans carry a null plan; nothing to validate.
 	if req.Plan.Raw.IsNull() {
 		return
@@ -371,6 +424,37 @@ func (r *officialFirewallPolicyResource) ModifyPlan(_ context.Context, req resou
 	resp.Diagnostics.Append(r.RequireMinVersionForPath(
 		base.ControllerVersionFirewallPolicyReportFlow.String(), path.Root("report_flow_enabled"), req.Config,
 	)...)
+
+	var action, stateAction types.String
+	var configured, stateValue types.Bool
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("action"), &action)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("allow_return_traffic"), &configured)...)
+	if !req.State.Raw.IsNull() {
+		resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("action"), &stateAction)...)
+		resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("allow_return_traffic"), &stateValue)...)
+	}
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("allow_return_traffic"),
+		planAllowReturnTraffic(action, configured, stateAction, stateValue))...)
+}
+
+// planAllowReturnTraffic plans allow_return_traffic: null off ALLOW, the configured value, else the value
+// already on an ALLOW policy, else unknown (create sends false and reads it back).
+func planAllowReturnTraffic(action types.String, configured types.Bool, stateAction types.String, stateValue types.Bool) types.Bool {
+	switch {
+	case action.IsUnknown():
+		return types.BoolUnknown()
+	case action.ValueString() != firewallPolicyActionAllow:
+		return types.BoolNull()
+	case !configured.IsNull():
+		return configured
+	case stateAction.ValueString() == firewallPolicyActionAllow && ut.IsDefined(stateValue):
+		return stateValue
+	default:
+		return types.BoolUnknown()
+	}
 }
 
 // reportFlowSupported reports whether the controller models reportFlowEnabled.

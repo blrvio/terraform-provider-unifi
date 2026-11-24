@@ -468,3 +468,107 @@ func TestFirewallPolicy_ReportFlowGatedByControllerVersion(t *testing.T) {
 		})
 	}
 }
+
+// ---- allow_return_traffic (G17) ----
+
+func firewallPolicyActionJSON(t *testing.T, m *officialFirewallPolicyModel) map[string]any {
+	t.Helper()
+	m.Name = types.StringValue("p")
+	m.Source = ut.JSONStringValue(`{"zoneId":"11111111-1111-1111-1111-111111111111"}`)
+	m.Destination = ut.JSONStringValue(`{"zoneId":"22222222-2222-2222-2222-222222222222"}`)
+	m.IPProtocolScope = ut.JSONStringValue(`{"ipVersion":"IPV4_AND_IPV6"}`)
+	body, diags := m.AsUnifiModel(context.Background())
+	require.False(t, diags.HasError(), "AsUnifiModel diagnostics: %v", diags)
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+	out := map[string]any{}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	action, ok := out["action"].(map[string]any)
+	require.True(t, ok, "action should be an object")
+	return action
+}
+
+func TestFirewallPolicyAsUnifiModel_AllowReturnTraffic(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		action string
+		value  types.Bool
+		want   any // nil = key absent
+	}{
+		{"allow true", firewallPolicyActionAllow, types.BoolValue(true), true},
+		{"allow false", firewallPolicyActionAllow, types.BoolValue(false), false},
+		{"allow unknown on create sends false", firewallPolicyActionAllow, types.BoolUnknown(), false},
+		{"allow null sends false", firewallPolicyActionAllow, types.BoolNull(), false},
+		{"block omits the field", firewallPolicyActionBlock, types.BoolNull(), nil},
+		{"reject omits the field", firewallPolicyActionReject, types.BoolNull(), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			action := firewallPolicyActionJSON(t, &officialFirewallPolicyModel{
+				Action:             types.StringValue(tt.action),
+				AllowReturnTraffic: tt.value,
+			})
+			assert.Equal(t, tt.action, action["type"])
+			got, present := action["allowReturnTraffic"]
+			if tt.want == nil {
+				assert.False(t, present, "allowReturnTraffic must be omitted for %s", tt.action)
+				return
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestFirewallPolicyMerge_AllowReturnTraffic(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		action string
+		want   types.Bool
+	}{
+		{`{"type":"ALLOW","allowReturnTraffic":true}`, types.BoolValue(true)},
+		{`{"type":"ALLOW","allowReturnTraffic":false}`, types.BoolValue(false)},
+		{`{"type":"ALLOW"}`, types.BoolNull()},
+		{`{"type":"BLOCK"}`, types.BoolNull()},
+	} {
+		raw := `{"id":"66666666-6666-6666-6666-666666666666","name":"p","action":` + tt.action +
+			`,"enabled":true,"loggingEnabled":false,"index":1,` +
+			`"source":{"zoneId":"11111111-1111-1111-1111-111111111111"},` +
+			`"destination":{"zoneId":"22222222-2222-2222-2222-222222222222"},` +
+			`"ipProtocolScope":{"ipVersion":"IPV4_AND_IPV6"},"metadata":{}}`
+		var policy official.FirewallPolicy
+		require.NoError(t, json.Unmarshal([]byte(raw), &policy))
+		m := &officialFirewallPolicyModel{AllowReturnTraffic: types.BoolValue(true)}
+		diags := m.Merge(context.Background(), &policy)
+		require.False(t, diags.HasError(), "Merge diagnostics: %v", diags)
+		assert.Equal(t, tt.want, m.AllowReturnTraffic, tt.action)
+	}
+}
+
+func TestPlanAllowReturnTraffic(t *testing.T) {
+	t.Parallel()
+	allow, block := types.StringValue(firewallPolicyActionAllow), types.StringValue(firewallPolicyActionBlock)
+	null := types.StringNull()
+	tests := []struct {
+		name        string
+		action      types.String
+		configured  types.Bool
+		stateAction types.String
+		stateValue  types.Bool
+		want        types.Bool
+	}{
+		{"unknown action", types.StringUnknown(), types.BoolNull(), null, types.BoolNull(), types.BoolUnknown()},
+		{"block is always null", block, types.BoolNull(), allow, types.BoolValue(true), types.BoolNull()},
+		{"configured wins", allow, types.BoolValue(false), allow, types.BoolValue(true), types.BoolValue(false)},
+		{"existing allow keeps its value", allow, types.BoolNull(), allow, types.BoolValue(true), types.BoolValue(true)},
+		{"create is unknown", allow, types.BoolNull(), null, types.BoolNull(), types.BoolUnknown()},
+		{"block to allow is unknown", allow, types.BoolNull(), block, types.BoolNull(), types.BoolUnknown()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, planAllowReturnTraffic(tt.action, tt.configured, tt.stateAction, tt.stateValue))
+		})
+	}
+}

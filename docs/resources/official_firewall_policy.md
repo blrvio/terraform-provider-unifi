@@ -70,6 +70,7 @@ resource "unifi_official_firewall_policy" "block_invalid" {
 
 ### Optional
 
+- `allow_return_traffic` (Boolean) Only for `action = "ALLOW"`: have the controller create a derived policy for the mirrored zone pair that allows the return traffic (shown as "<name> (Return)"). The controller requires this on every ALLOW policy. When omitted, `false` is sent on create and the value read from the controller is kept afterwards, so an existing policy is not changed. Must be unset for `BLOCK` and `REJECT`, where it is always null.
 - `connection_state_filter` (List of String) Match on firewall connection state. Any of `NEW`, `INVALID`, `ESTABLISHED`, `RELATED`. If unset, matches all connection states.
 - `description` (String) Optional description of the firewall policy.
 - `enabled` (Boolean) Whether the firewall policy is enabled. Defaults to `true`.
