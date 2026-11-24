@@ -356,3 +356,57 @@ func TestMergeEtherLighting_FromEmptyCurrent(t *testing.T) {
 		t.Errorf("unexpected merge from empty: %+v", got)
 	}
 }
+
+// G19: mirror_port_idx round-trips and is validated against op_mode.
+func TestPortOverrideMirror(t *testing.T) {
+	t.Run("RoundTrip", func(t *testing.T) {
+		po, err := toPortOverride(map[string]interface{}{"number": 16, "op_mode": "mirror", "mirror_port_idx": 8})
+		require.NoError(t, err)
+		assert.Equal(t, "mirror", po.OpMode)
+		assert.Equal(t, 8, po.MirrorPortIDX)
+		assert.Equal(t, 8, fromPortOverride(po)["mirror_port_idx"])
+
+		raw, err := json.Marshal(po)
+		require.NoError(t, err)
+		assert.Contains(t, string(raw), `"mirror_port_idx":8`)
+	})
+
+	t.Run("OmittedWhenNotMirroring", func(t *testing.T) {
+		po, err := toPortOverride(map[string]interface{}{"number": 3, "op_mode": "switch"})
+		require.NoError(t, err)
+		raw, err := json.Marshal(po)
+		require.NoError(t, err)
+		assert.NotContains(t, string(raw), "mirror_port_idx")
+	})
+
+	for name, tc := range map[string]struct {
+		port, mirror int
+		opMode       string
+	}{
+		"MirrorWithoutSource": {port: 16, opMode: "mirror"},
+		"MirrorOfItself":      {port: 16, mirror: 16, opMode: "mirror"},
+		"SourceWithoutMirror": {port: 3, mirror: 8, opMode: "switch"},
+		"SourceOnDefaultMode": {port: 3, mirror: 8, opMode: ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := toPortOverride(map[string]interface{}{"number": tc.port, "op_mode": tc.opMode, "mirror_port_idx": tc.mirror})
+			require.Error(t, err)
+			assert.Error(t, validatePortMirror(tc.port, tc.opMode, tc.mirror))
+		})
+	}
+}
+
+func TestPortOverrideMirror_SchemaValidator(t *testing.T) {
+	elem, ok := ResourceDevice().Schema["port_override"].Elem.(*schema.Resource)
+	require.True(t, ok)
+	s := elem.Schema["mirror_port_idx"]
+	require.NotNil(t, s)
+	for _, ok := range []int{0, 1, 56} {
+		_, errs := s.ValidateFunc(ok, "mirror_port_idx")
+		assert.Empty(t, errs, "%d should be valid", ok)
+	}
+	for _, bad := range []int{-1, 57} {
+		_, errs := s.ValidateFunc(bad, "mirror_port_idx")
+		assert.NotEmpty(t, errs, "%d should be invalid", bad)
+	}
+}
