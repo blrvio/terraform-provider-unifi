@@ -641,19 +641,27 @@ func resourceDeviceUpdate(ctx context.Context, d *schema.ResourceData, meta inte
 		req.EtherLighting = mergeEtherLighting(current.EtherLighting, etherLightingMap)
 	}
 
-	// go-unifi v1.9.2's updateDevice converts a successful-but-empty PUT response into
-	// unifi.ErrNotFound (see utils.ReReadOnUpdateNotFound / issue #98); re-read to tell
-	// a spurious error from a genuine out-of-band deletion.
-	resp, err := c.UpdateDevice(ctx, site, req)
-	resp, found, err := utils.ReReadOnUpdateNotFound(resp, err, func() (*unifi.Device, error) {
-		return c.GetDevice(ctx, site, req.ID)
-	})
+	// Send only the provider-managed device fields (see deviceUpdateBody), never the
+	// typed struct: its zero-value junk (mbb_overrides/config_network/nut_server/
+	// rps_override as {}, state:0, adopted:false) makes the controller reject switch
+	// and gateway updates with api.err.DeviceNotSupport5gException, and a blank
+	// config_network would wipe the device's management IP settings if accepted.
+	putMap, err := deviceUpdateBody(req, d.HasChange("port_override"), len(etherLighting) > 0)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	if !found {
+	// UpdateDeviceRaw re-reads the device itself when the PUT echo is empty.
+	rawResp, err := c.UpdateDeviceRaw(ctx, site, d.Id(), putMap)
+	if errors.Is(err, unifi.ErrNotFound) {
 		d.SetId("")
 		return nil
+	}
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	resp, err := deviceFromRaw(rawResp)
+	if err != nil {
+		return diag.FromErr(err)
 	}
 
 	_, err = waitForDeviceState(ctx, d, meta, unifi.DeviceStateConnected, []unifi.DeviceState{unifi.DeviceStateAdopting, unifi.DeviceStateProvisioning}, 1*time.Minute)
@@ -960,6 +968,47 @@ func mergeRadiosRaw(current []json.RawMessage, set *schema.Set) ([]json.RawMessa
 // deviceFromRaw decodes a raw device map into the typed Device used to populate
 // Terraform state. The raw map is authoritative on the wire; the typed view is
 // only for reading back the attributes the provider models.
+// deviceUpdateBody builds the PUT body for a non-radio device update: only the
+// device-level fields this resource manages, mirroring the partial bodies the UniFi
+// UI sends. The typed unifi.Device is marshaled first so field encoding stays the
+// SDK's, then filtered through an allowlist. port_overrides is sent when the block
+// changed (an emptied set is sent as [] so the overrides are really removed) or is
+// non-empty; it is left out otherwise so devices without declared overrides (APs)
+// keep theirs. ether_lighting is sent only when configured.
+func deviceUpdateBody(req *unifi.Device, portOverridesChanged, etherLightingSet bool) (unifi.DeviceRaw, error) {
+	reqJSON, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("encoding device update: %w", err)
+	}
+	var reqMap map[string]json.RawMessage
+	if err := json.Unmarshal(reqJSON, &reqMap); err != nil {
+		return nil, fmt.Errorf("decoding device update: %w", err)
+	}
+
+	body := unifi.DeviceRaw{}
+	for _, k := range []string{"name", "bandsteering_mode", "switch_vlan_enabled"} {
+		if v, ok := reqMap[k]; ok {
+			body[k] = v
+		}
+	}
+	if etherLightingSet {
+		if v, ok := reqMap["ether_lighting"]; ok {
+			body["ether_lighting"] = v
+		}
+	}
+	if portOverridesChanged || len(req.PortOverrides) > 0 {
+		pos := req.PortOverrides
+		if pos == nil {
+			pos = []unifi.DevicePortOverrides{}
+		}
+		body["port_overrides"], err = json.Marshal(pos)
+		if err != nil {
+			return nil, fmt.Errorf("encoding port_overrides: %w", err)
+		}
+	}
+	return body, nil
+}
+
 func deviceFromRaw(raw unifi.DeviceRaw) (*unifi.Device, error) {
 	b, err := json.Marshal(raw)
 	if err != nil {
