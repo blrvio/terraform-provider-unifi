@@ -410,3 +410,62 @@ func TestPortOverrideMirror_SchemaValidator(t *testing.T) {
 		assert.NotEmpty(t, errs, "%d should be invalid", bad)
 	}
 }
+
+// G23: a non-radio update must not PUT the typed struct's zero-value fields
+// (mbb_overrides/config_network/... trip api.err.DeviceNotSupport5gException on
+// switches and a blank config_network would wipe the management IP settings).
+func TestDeviceUpdateBody(t *testing.T) {
+	keys := func(m unifi.DeviceRaw) []string {
+		out := make([]string, 0, len(m))
+		for k := range m {
+			out = append(out, k)
+		}
+		return out
+	}
+
+	t.Run("SwitchPortChangeSendsOnlyManagedFields", func(t *testing.T) {
+		req := &unifi.Device{
+			ID:     "dev1",
+			MAC:    "70:a7:41:00:00:01",
+			SiteID: "default",
+			Name:   "USW 16 PoE",
+			PortOverrides: []unifi.DevicePortOverrides{
+				{PortIDX: 16, Name: "MacBook", Forward: "native", NATiveNetworkID: "net-main", TaggedVLANMgmt: "block_all"},
+			},
+		}
+		body, err := deviceUpdateBody(req, true, false)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"name", "port_overrides"}, keys(body))
+
+		var pos []map[string]interface{}
+		require.NoError(t, json.Unmarshal(body["port_overrides"], &pos))
+		require.Len(t, pos, 1)
+		assert.EqualValues(t, 16, pos[0]["port_idx"])
+		assert.Equal(t, "native", pos[0]["forward"])
+		assert.Equal(t, "net-main", pos[0]["native_networkconf_id"])
+		assert.Equal(t, "block_all", pos[0]["tagged_vlan_mgmt"])
+	})
+
+	t.Run("EmptiedOverridesAreSentAsEmptyList", func(t *testing.T) {
+		body, err := deviceUpdateBody(&unifi.Device{Name: "sw"}, true, false)
+		require.NoError(t, err)
+		assert.JSONEq(t, `[]`, string(body["port_overrides"]))
+	})
+
+	t.Run("UnchangedEmptyOverridesAreLeftOut", func(t *testing.T) {
+		body, err := deviceUpdateBody(&unifi.Device{Name: "ap", BandsteeringMode: "prefer_5g"}, false, false)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"name", "bandsteering_mode"}, keys(body))
+	})
+
+	t.Run("EtherLightingOnlyWhenConfigured", func(t *testing.T) {
+		req := &unifi.Device{Name: "sw", SwitchVLANEnabled: true, EtherLighting: unifi.DeviceEtherLighting{Mode: "speed"}}
+		without, err := deviceUpdateBody(req, false, false)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"name", "switch_vlan_enabled"}, keys(without))
+
+		with, err := deviceUpdateBody(req, false, true)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"name", "switch_vlan_enabled", "ether_lighting"}, keys(with))
+	})
+}
