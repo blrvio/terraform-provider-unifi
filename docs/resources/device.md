@@ -176,6 +176,7 @@ Note: All ports in the LAG must be sequential and have matching configurations.
   * `disabled` - Disable VLAN forwarding
 
 This attribute has NO default: leaving it unset keeps the port's existing forwarding behavior (the value is computed from the controller). Note: the underlying field uses `omitempty`, so once set it cannot be cleared back to empty through Terraform — change it to another value instead.
+- `mirror_port_idx` (Number) Only for `op_mode = "mirror"`: the port whose traffic is copied to this port (the port with `op_mode = "mirror"` is the destination where the analyzer is plugged in). Required in mirror mode and must be unset (0) otherwise. Valid range: 1-56.
 - `name` (String) A friendly name for the port that will be displayed in the UniFi controller UI. Examples:
   * 'Uplink to Core Switch'
   * 'Conference Room AP'

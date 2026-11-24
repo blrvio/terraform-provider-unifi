@@ -114,3 +114,31 @@ func TestCanonicalJSON(t *testing.T) {
 	_, err := CanonicalJSON([]byte(`{bad`))
 	assert.Error(t, err)
 }
+
+// G21: the controller returns networkIds/macAddresses in its own order.
+func TestJSONSemanticallyEqual_UnorderedIDArrays(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		a, b string
+		want bool
+	}{
+		{
+			"networkIds order ignored",
+			`{"trafficFilter":{"networkFilter":{"matchOpposite":false,"networkIds":["a","b","c"]},"type":"NETWORK"},"zoneId":"z"}`,
+			`{"zoneId":"z","trafficFilter":{"type":"NETWORK","networkFilter":{"networkIds":["c","a","b"],"matchOpposite":false}}}`,
+			true,
+		},
+		{"macAddresses order ignored", `{"macAddresses":["x","y"]}`, `{"macAddresses":["y","x"]}`, true},
+		{"different members differ", `{"networkIds":["a","b"]}`, `{"networkIds":["a","c"]}`, false},
+		{"missing member differs", `{"networkIds":["a","b"]}`, `{"networkIds":["a"]}`, false},
+		{"other arrays stay ordered", `{"items":["a","b"]}`, `{"items":["b","a"]}`, false},
+		{"non-string arrays stay ordered", `{"networkIds":[1,2]}`, `{"networkIds":[2,1]}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, JSONSemanticallyEqual(tt.a, tt.b))
+		})
+	}
+}

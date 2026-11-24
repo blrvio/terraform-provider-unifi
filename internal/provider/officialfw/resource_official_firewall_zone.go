@@ -132,7 +132,12 @@ func (m *officialFirewallZoneModel) Merge(ctx context.Context, other interface{}
 	m.Origin = types.StringValue(zone.Metadata.Origin)
 	m.Configurable = zoneConfigurable(zone.Metadata)
 
-	list, listDiags := types.ListValueFrom(ctx, types.StringType, uuidsToStrings(zone.NetworkIds))
+	// The controller returns zone members in its own order; keep the planned/state order for the same set.
+	var prior []string
+	if ut.IsDefined(m.NetworkIDs) {
+		diags.Append(ut.ListElementsAs(ctx, m.NetworkIDs, &prior)...)
+	}
+	list, listDiags := types.ListValueFrom(ctx, types.StringType, ut.KeepStringOrder(prior, uuidsToStrings(zone.NetworkIds)))
 	diags.Append(listDiags...)
 	if diags.HasError() {
 		return diags

@@ -59,3 +59,23 @@ func StringToListElements(ctx context.Context, value string) (types.List, diag.D
 	}
 	return list, diags
 }
+
+// KeepStringOrder returns fresh in the order of prior when both hold the same strings (as multisets), so a
+// controller that returns an unordered collection in its own order does not churn a list attribute.
+// Otherwise fresh is returned unchanged.
+func KeepStringOrder(prior, fresh []string) []string {
+	if len(prior) != len(fresh) {
+		return fresh
+	}
+	counts := make(map[string]int, len(fresh))
+	for _, s := range fresh {
+		counts[s]++
+	}
+	for _, s := range prior {
+		if counts[s] == 0 {
+			return fresh
+		}
+		counts[s]--
+	}
+	return prior
+}

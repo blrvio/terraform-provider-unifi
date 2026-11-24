@@ -103,3 +103,28 @@ func TestDNSPolicyAsUnifiModel_UnknownType(t *testing.T) {
 	_, diags := m.AsUnifiModel(context.Background())
 	assert.True(t, diags.HasError())
 }
+
+// G18: a create plans priority/weight (Computed) as unknown; Merge must resolve fields the type does not
+// carry to null, or Terraform reports "invalid result object after apply".
+func TestDNSPolicyMerge_ResolvesUnknownForOtherTypes(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		`{"id":"33333333-3333-3333-3333-333333333333","type":"A_RECORD","enabled":true,"domain":"ha.wnst","ipv4Address":"10.1.160.217","ttlSeconds":0}`,
+		`{"id":"33333333-3333-3333-3333-333333333333","type":"CNAME_RECORD","enabled":true,"domain":"x.local","targetDomain":"y.example.com","ttlSeconds":0}`,
+	} {
+		var policy official.DNSPolicy
+		require.NoError(t, json.Unmarshal([]byte(raw), &policy))
+		m := &dnsPolicyModel{
+			TTLSeconds: types.Int32Unknown(),
+			Priority:   types.Int32Unknown(),
+			Weight:     types.Int32Unknown(),
+			Domain:     types.StringUnknown(),
+		}
+		diags := m.Merge(context.Background(), &policy)
+		require.False(t, diags.HasError(), "Merge diagnostics: %v", diags)
+		assert.True(t, m.Priority.IsNull(), "priority must be null for %s", policy.Type)
+		assert.True(t, m.Weight.IsNull(), "weight must be null for %s", policy.Type)
+		assert.Equal(t, types.Int32Value(0), m.TTLSeconds)
+		assert.False(t, m.Domain.IsUnknown())
+	}
+}

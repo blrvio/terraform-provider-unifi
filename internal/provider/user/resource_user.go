@@ -38,6 +38,7 @@ func ResourceUser() *schema.Resource {
 		ReadContext:   resourceUserRead,
 		UpdateContext: resourceUserUpdate,
 		DeleteContext: resourceUserDelete,
+		CustomizeDiff: resourceUserCustomizeDiff,
 		Importer: &schema.ResourceImporter{
 			// allow_existing only matters on create. skip_forget_on_destroy (destructive)
 			// is deliberately not defaulted on import.
@@ -118,6 +119,40 @@ func ResourceUser() *schema.Resource {
 				Optional: true,
 			},
 
+			"fixed_ap_enabled": {
+				Description: "Lock this wireless client to the access point in `fixed_ap_mac`. When omitted, the value " +
+					"already set on the controller is kept (it is not reset on update). Setting `fixed_ap_mac` alone " +
+					"turns it on; set it to `false` to remove the lock.",
+				Type:     schema.TypeBool,
+				Optional: true,
+				Computed: true,
+			},
+			"fixed_ap_mac": {
+				Description: "MAC address of the access point this client is locked to. When omitted, the value already " +
+					"set on the controller is kept.",
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: utils.MacDiffSuppressFunc,
+				ValidateFunc:     validation.Any(validation.StringIsEmpty, validation.StringMatch(utils.MacAddressRegexp, "Mac address is invalid")),
+			},
+			"virtual_network_override_enabled": {
+				Description: "Put this wireless client on the network in `virtual_network_override_id` instead of the " +
+					"WiFi's own network (\"Virtual Network Override\"). When omitted, the value already set on the " +
+					"controller is kept (it is not reset on update). Setting `virtual_network_override_id` alone turns it " +
+					"on; set it to `false` to return the client to the WiFi's network.",
+				Type:     schema.TypeBool,
+				Optional: true,
+				Computed: true,
+			},
+			"virtual_network_override_id": {
+				Description: "ID of the network (`unifi_network.id`) the client is placed on by the virtual network " +
+					"override. When omitted, the value already set on the controller is kept.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
+
 			// these are "meta" attributes that control TF UX
 			"allow_existing": {
 				Description: "Allow this resource to take over management of an existing user in the UniFi controller. When true:\n" +
@@ -159,6 +194,8 @@ func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interf
 	}
 
 	req := resourceUserGetResourceData(d)
+	overrides := userOverridesFromConfig(d)
+	applyUserOverrides(req, overrides, nil)
 
 	allowExisting, _ := d.Get("allow_existing").(bool)
 
@@ -182,6 +219,7 @@ func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interf
 
 		req.ID = existing.ID
 		req.SiteID = existing.SiteID
+		applyUserOverrides(req, overrides, existing)
 
 		// go-unifi v1.9.2's updateUser converts a successful-but-empty PUT response
 		// into unifi.ErrNotFound (see utils.ReReadOnUpdateNotFound / issue #98); re-read
@@ -298,6 +336,11 @@ func resourceUserSetResourceData(resp *unifi.User, d *schema.ResourceData, site 
 	if err := d.Set("ip", resp.IP); err != nil {
 		return diag.FromErr(err)
 	}
+	for k, v := range userOverridesToState(resp) {
+		if err := d.Set(k, v); err != nil {
+			return diag.FromErr(err)
+		}
+	}
 
 	return nil
 }
@@ -385,6 +428,17 @@ func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 
 	req.ID = d.Id()
 	req.SiteID = site
+
+	// The PUT is a full replace: read the controller's AP lock / network override so an unconfigured one survives.
+	current, err := c.GetUser(ctx, site, req.ID)
+	if errors.Is(err, unifi.ErrNotFound) {
+		d.SetId("")
+		return nil
+	}
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	applyUserOverrides(req, userOverridesFromConfig(d), current)
 
 	// go-unifi v1.9.2's updateUser converts a successful-but-empty PUT response into
 	// unifi.ErrNotFound (see utils.ReReadOnUpdateNotFound / issue #98); re-read to tell

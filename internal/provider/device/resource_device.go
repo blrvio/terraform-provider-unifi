@@ -32,6 +32,7 @@ func ResourceDevice() *schema.Resource {
 		ReadContext:   resourceDeviceRead,
 		UpdateContext: resourceDeviceUpdate,
 		DeleteContext: resourceDeviceDelete,
+		CustomizeDiff: resourceDeviceCustomizeDiff,
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceDeviceImport,
 		},
@@ -190,6 +191,14 @@ func ResourceDevice() *schema.Resource {
 							Type:         schema.TypeString,
 							Optional:     true,
 							ValidateFunc: validation.StringInSlice([]string{"", "auto", "pasv24", "passthrough", "off"}, false),
+						},
+						"mirror_port_idx": {
+							Description: "Only for `op_mode = \"mirror\"`: the port whose traffic is copied to this port " +
+								"(the port with `op_mode = \"mirror\"` is the destination where the analyzer is plugged in). " +
+								"Required in mirror mode and must be unset (0) otherwise. Valid range: 1-56.",
+							Type:         schema.TypeInt,
+							Optional:     true,
+							ValidateFunc: validation.Any(validation.IntInSlice([]int{0}), validation.IntBetween(1, 56)),
 						},
 						"aggregate_num_ports": {
 							Description: "The number of ports to include in a link aggregation group (LAG). Valid range: 2-8 ports. Used when:\n" +
@@ -1023,6 +1032,10 @@ func toPortOverride(data map[string]interface{}) (unifi.DevicePortOverrides, err
 	opMode, _ := data["op_mode"].(string)
 	poeMode, _ := data["poe_mode"].(string)
 	aggregateNumPorts, _ := data["aggregate_num_ports"].(int)
+	mirrorPortIdx, _ := data["mirror_port_idx"].(int)
+	if err := validatePortMirror(idx, opMode, mirrorPortIdx); err != nil {
+		return unifi.DevicePortOverrides{}, err
+	}
 
 	var excludedNetworkIDs []string
 	if set, ok := data["excluded_network_ids"].(*schema.Set); ok {
@@ -1049,6 +1062,7 @@ func toPortOverride(data map[string]interface{}) (unifi.DevicePortOverrides, err
 		Name:               name,
 		PortProfileID:      profileID,
 		OpMode:             opMode,
+		MirrorPortIDX:      mirrorPortIdx,
 		PoeMode:            poeMode,
 		NATiveNetworkID:    nativeNetworkID,
 		TaggedVLANMgmt:     taggedVLANMgmt,
@@ -1083,6 +1097,7 @@ func fromPortOverride(po unifi.DevicePortOverrides) map[string]interface{} {
 		"name":            po.Name,
 		"port_profile_id": po.PortProfileID,
 		"op_mode":         po.OpMode,
+		"mirror_port_idx": po.MirrorPortIDX,
 		"poe_mode":        po.PoeMode,
 		// Inverse of the translation in toPortOverride: the member-list
 		// length is the LAG port count (0 / unset round-trips as an empty
@@ -1101,6 +1116,41 @@ func fromPortOverride(po unifi.DevicePortOverrides) map[string]interface{} {
 		"voice_networkconf_id":  po.VoiceNetworkID,
 		"setting_preference":    po.SettingPreference,
 	}
+}
+
+// validatePortMirror checks the mirror pairing: a mirror port needs a different source port, and only a
+// mirror port may name one (the controller would otherwise store a dangling mirror_port_idx).
+func validatePortMirror(port int, opMode string, mirrorPortIdx int) error {
+	switch {
+	case opMode == "mirror" && mirrorPortIdx == 0:
+		return fmt.Errorf("port_override %d: mirror_port_idx is required when op_mode is \"mirror\"", port)
+	case opMode == "mirror" && mirrorPortIdx == port:
+		return fmt.Errorf("port_override %d: mirror_port_idx must be a different port", port)
+	case opMode != "mirror" && mirrorPortIdx != 0:
+		return fmt.Errorf("port_override %d: mirror_port_idx is only valid when op_mode is \"mirror\"", port)
+	}
+	return nil
+}
+
+// resourceDeviceCustomizeDiff surfaces port-mirror mistakes at plan time instead of at apply.
+func resourceDeviceCustomizeDiff(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+	if !d.NewValueKnown("port_override") {
+		return nil
+	}
+	set, _ := d.Get("port_override").(*schema.Set)
+	if set == nil {
+		return nil
+	}
+	for _, item := range set.List() {
+		data, _ := item.(map[string]interface{})
+		port, _ := data["number"].(int)
+		opMode, _ := data["op_mode"].(string)
+		mirrorPortIdx, _ := data["mirror_port_idx"].(int)
+		if err := validatePortMirror(port, opMode, mirrorPortIdx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func waitForDeviceState(ctx context.Context, d *schema.ResourceData, meta interface{}, targetState unifi.DeviceState, pendingStates []unifi.DeviceState, timeout time.Duration) (*unifi.Device, error) {

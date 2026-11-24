@@ -64,6 +64,8 @@ resource "unifi_user" "test" {
 Use with caution as it can modify settings for devices already connected to your network. Defaults to `true`.
 - `blocked` (Boolean) When true, this client will be blocked from accessing the network. Useful for temporarily or permanently restricting network access for specific devices.
 - `dev_id_override` (Number) Override the device fingerprint.
+- `fixed_ap_enabled` (Boolean) Lock this wireless client to the access point in `fixed_ap_mac`. When omitted, the value already set on the controller is kept (it is not reset on update). Setting `fixed_ap_mac` alone turns it on; set it to `false` to remove the lock.
+- `fixed_ap_mac` (String) MAC address of the access point this client is locked to. When omitted, the value already set on the controller is kept.
 - `fixed_ip` (String) A static IPv4 address to assign to this client. Ensure this IP is within the client's network range and not already assigned to another device.
 - `local_dns_record` (String) A local DNS hostname for this client. When set, other devices on the network can resolve this name to the client's IP address (e.g., 'printer.local', 'nas.home.arpa'). Such DNS record is automatically added to controller's DNS records.
 - `network_id` (String) The ID of the network this client should be associated with. This is particularly important when using VLANs or multiple networks.
@@ -71,6 +73,8 @@ Use with caution as it can modify settings for devices already connected to your
 - `site` (String) The name of the UniFi site where this user should be managed. If not specified, the default site will be used.
 - `skip_forget_on_destroy` (Boolean) When false (default), the client will be 'forgotten' by the controller when this resource is destroyed. Set to true to keep the client's history in the controller after the resource is removed from Terraform. Defaults to `false`.
 - `user_group_id` (String) The ID of the user group this client belongs to. User groups can be used to apply common settings and restrictions to multiple clients.
+- `virtual_network_override_enabled` (Boolean) Put this wireless client on the network in `virtual_network_override_id` instead of the WiFi's own network ("Virtual Network Override"). When omitted, the value already set on the controller is kept (it is not reset on update). Setting `virtual_network_override_id` alone turns it on; set it to `false` to return the client to the WiFi's network.
+- `virtual_network_override_id` (String) ID of the network (`unifi_network.id`) the client is placed on by the virtual network override. When omitted, the value already set on the controller is kept.
 
 ### Read-Only
 
