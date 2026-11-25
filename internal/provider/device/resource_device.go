@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -122,14 +123,11 @@ func ResourceDevice() *schema.Resource {
 					"everything\", not \"trunk nothing\".",
 				Type:     schema.TypeSet,
 				Optional: true,
-				// Key set identity by port `number` only (see portOverrideSetHash):
-				// the controller auto-populates/echoes per-port VLAN fields
-				// (e.g. setting_preference or a native VLAN) on override entries
-				// the user never declared them on. Hashing the whole element would
-				// let such an echo change an element's identity and churn the set
-				// (perpetual add/remove diff). Combined with the Optional+Computed
-				// VLAN attributes below, an undeclared field reads back the
-				// controller value without producing a diff.
+				// Hash every declared field so in-element edits produce a diff;
+				// the read path keeps only declared fields on managed ports, so a
+				// controller echo (e.g. setting_preference or a native VLAN on a
+				// port that never declared it) cannot churn the set. See
+				// portOverrideSetHash / declaredFieldsOnly.
 				Set: portOverrideSetHash,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -736,7 +734,7 @@ func resourceDeviceRead(ctx context.Context, d *schema.ResourceData, meta interf
 }
 
 func resourceDeviceSetResourceData(resp *unifi.Device, d *schema.ResourceData, site string) diag.Diagnostics {
-	portOverrides := setFromPortOverrides(resp.PortOverrides)
+	portOverrides := setFromPortOverrides(resp.PortOverrides, setElementsByKey(d, "port_override", "number"))
 
 	values := map[string]interface{}{
 		"site":                site,
@@ -792,43 +790,140 @@ func mergeEtherLighting(current unifi.DeviceEtherLighting, m map[string]interfac
 	return r
 }
 
-// radioSetHash keys the `radio` set by band only, so changes to Computed
-// fields (channel, ht, …) don't churn set membership during plan/apply.
+// The `radio` and `port_override` sets hash every declared (non-zero) field, not
+// just their key (`name` / `number`). The SDKv2 set diff stops as soon as the old
+// and new sets have the same hash codes, so a key-only hash made every in-element
+// edit (a radio's channel or tx_power_mode, a port's name or forward mode) plan as
+// "No changes" (G22). Hashing the content alone would instead churn the set
+// whenever the controller echoes a field the user never declared, so the read
+// path pairs it with declaredFieldsOnly: on an element the user manages, state
+// only carries the fields the prior state/config declared. Both sides of the
+// comparison then hold the same fields, and only a real change moves the hash.
+
+// radioSetHash hashes a `radio` element by band plus every declared field.
 func radioSetHash(v interface{}) int {
 	m, _ := v.(map[string]interface{})
-	name, _ := m["name"].(string)
-	return schema.HashString(name)
+	return declaredFieldsHash(m, nil)
 }
 
-// portOverrideSetHash keys the `port_override` set by port `number` only, so the
-// controller echoing/auto-populating per-port fields (e.g. setting_preference or
-// a native VLAN) on an entry the user didn't declare them on does not change the
-// element's set identity and churn the set. Together with the Optional+Computed
-// VLAN attributes, an undeclared field reads back the controller value without a
-// perpetual add/remove diff. `number` is Required and unique per port
-// (setToPortOverrides already dedupes by PortIDX), so it is a sound stable key.
-// Mirrors the radioSetHash precedent.
+// portOverrideZeroEquivalents lists values that mean "unset" for hashing:
+// `op_mode` defaults to "switch" in config while the controller may omit it.
+var portOverrideZeroEquivalents = map[string]string{"op_mode": "switch"}
+
+// portOverrideSetHash hashes a `port_override` element by port number plus every
+// declared field.
 func portOverrideSetHash(v interface{}) int {
 	m, _ := v.(map[string]interface{})
-	number, _ := m["number"].(int)
-	return schema.HashInt(number)
+	return declaredFieldsHash(m, portOverrideZeroEquivalents)
+}
+
+// declaredFieldsHash hashes the canonical form of every non-zero field of a set
+// element, in key order. Zero values (and the per-field zeroEquivalents) are
+// skipped so an omitted field and its zero value hash identically.
+func declaredFieldsHash(m map[string]interface{}, zeroEquivalents map[string]string) int {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		s := canonicalFieldValue(m[k])
+		if s == "" || s == zeroEquivalents[k] {
+			continue
+		}
+		fmt.Fprintf(&b, "%s=%s;", k, s)
+	}
+	return schema.HashString(b.String())
+}
+
+// canonicalFieldValue renders a set-element field as a string, "" for its zero
+// value. Nested sets/lists are sorted so element order never changes the hash.
+func canonicalFieldValue(v interface{}) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return x
+	case int:
+		if x == 0 {
+			return ""
+		}
+		return strconv.Itoa(x)
+	case bool:
+		if !x {
+			return ""
+		}
+		return "true"
+	case *schema.Set:
+		return canonicalFieldValue(x.List())
+	case []interface{}:
+		items := make([]string, 0, len(x))
+		for _, item := range x {
+			if s := canonicalFieldValue(item); s != "" {
+				items = append(items, s)
+			}
+		}
+		sort.Strings(items)
+		return strings.Join(items, ",")
+	default:
+		return fmt.Sprint(x)
+	}
+}
+
+// declaredFieldsOnly zeroes every field of current (read from the controller)
+// that prior (the same element in the prior state/config) leaves unset, except
+// key. A declared field keeps the controller value, so drift on it still shows
+// up; a field the user never declared is never surfaced and cannot churn the set.
+func declaredFieldsOnly(current, prior map[string]interface{}, key string) map[string]interface{} {
+	for k, v := range current {
+		if k == key || canonicalFieldValue(prior[k]) != "" {
+			continue
+		}
+		current[k] = zeroFieldValue(v)
+	}
+	return current
+}
+
+func zeroFieldValue(v interface{}) interface{} {
+	switch v.(type) {
+	case string:
+		return ""
+	case int:
+		return 0
+	case bool:
+		return false
+	case *schema.Set:
+		return utils.StringSliceToSet(nil)
+	default:
+		return nil
+	}
+}
+
+// setElementsByKey indexes the elements of a set attribute by their key field.
+func setElementsByKey(d *schema.ResourceData, attr, key string) map[string]map[string]interface{} {
+	out := map[string]map[string]interface{}{}
+	set, _ := d.Get(attr).(*schema.Set)
+	if set == nil {
+		return out
+	}
+	for _, item := range set.List() {
+		m, _ := item.(map[string]interface{})
+		out[canonicalFieldValue(m[key])] = m
+	}
+	return out
 }
 
 // radiosFromDevice returns radio state for only the bands the user manages
 // (present in config/state), so undeclared bands on the device never produce
-// a diff.
+// a diff. Within a managed band only the declared fields are kept (see
+// declaredFieldsOnly).
 func radiosFromDevice(resp *unifi.Device, d *schema.ResourceData) []map[string]interface{} {
-	managed := map[string]bool{}
-	radioSet, _ := d.Get("radio").(*schema.Set)
-	for _, item := range radioSet.List() {
-		m, _ := item.(map[string]interface{})
-		name, _ := m["name"].(string)
-		managed[name] = true
-	}
-	radios := make([]map[string]interface{}, 0, len(managed))
+	prior := setElementsByKey(d, "radio", "name")
+	radios := make([]map[string]interface{}, 0, len(prior))
 	for _, r := range resp.RadioTable {
-		if managed[r.Radio] {
-			radios = append(radios, fromRadio(r))
+		if p, ok := prior[r.Radio]; ok {
+			radios = append(radios, declaredFieldsOnly(fromRadio(r), p, "name"))
 		}
 	}
 	return radios
@@ -1066,10 +1161,18 @@ func setToPortOverrides(set *schema.Set) ([]unifi.DevicePortOverrides, error) {
 	return pos, nil
 }
 
-func setFromPortOverrides(pos []unifi.DevicePortOverrides) []map[string]interface{} {
+// setFromPortOverrides returns every override on the device. Ports the prior
+// state/config manages keep only their declared fields (see declaredFieldsOnly);
+// ports it doesn't (overrides made in the console, or an import) are read in
+// full, so they surface as a diff or populate the imported state.
+func setFromPortOverrides(pos []unifi.DevicePortOverrides, prior map[string]map[string]interface{}) []map[string]interface{} {
 	list := make([]map[string]interface{}, 0, len(pos))
 	for _, po := range pos {
-		list = append(list, fromPortOverride(po))
+		m := fromPortOverride(po)
+		if p, ok := prior[strconv.Itoa(po.PortIDX)]; ok {
+			m = declaredFieldsOnly(m, p, "number")
+		}
+		list = append(list, m)
 	}
 	return list
 }
@@ -1152,12 +1255,11 @@ func fromPortOverride(po unifi.DevicePortOverrides) map[string]interface{} {
 		// length is the LAG port count (0 / unset round-trips as an empty
 		// list, preserving the previous zero-value behavior).
 		"aggregate_num_ports": len(po.AggregateMembers),
-		// Per-port VLAN overrides, round-tripped unconditionally to match the
-		// existing fields above (keeps ImportStateVerify consistent). These
-		// attributes are Optional+Computed and the set is keyed by port number
-		// (portOverrideSetHash), so surfacing a value the controller populated on
-		// a port the user didn't declare it on is absorbed as the computed value
-		// instead of churning the set.
+		// Per-port VLAN overrides, round-tripped like the fields above (an
+		// import sees the full override). On a port the user manages,
+		// setFromPortOverrides then drops every field the config doesn't
+		// declare, so a value the controller populated on its own never
+		// changes the element's hash.
 		"native_networkconf_id": po.NATiveNetworkID,
 		"tagged_vlan_mgmt":      po.TaggedVLANMgmt,
 		"forward":               po.Forward,
