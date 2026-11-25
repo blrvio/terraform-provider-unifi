@@ -1,11 +1,14 @@
 package device
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/blrvio/go-unifi/v11/unifi"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -217,29 +220,123 @@ func TestPortOverride_VLANValidators(t *testing.T) {
 	}
 }
 
-// portOverrideSetHash must key the set by port number ONLY, so a controller
-// echoing/auto-populating a per-port VLAN field (e.g. setting_preference or a
-// native VLAN) on an entry the user didn't declare it on cannot change the
-// element's set identity and churn the set (the backward-compat hazard). Two
-// blocks for the same port number must hash identically regardless of the VLAN
-// fields; different numbers must hash differently.
-func TestPortOverrideSetHash_StableByNumber(t *testing.T) {
+// portOverrideSetHash must hash every declared field (G22): an in-element edit
+// has to change the hash, otherwise the SDKv2 set diff sees equal sets and plans
+// "No changes". Zero values, an omitted field and op_mode "switch" vs "" must
+// hash identically, and nested sets must not depend on element order.
+func TestPortOverrideSetHash_DeclaredFields(t *testing.T) {
 	bare := portOverrideData(map[string]interface{}{"number": 5})
-	echoed := portOverrideData(map[string]interface{}{
-		"number":                5,
-		"setting_preference":    "auto",
-		"native_networkconf_id": "net-auto",
-		"forward":               "native",
-	})
-	assert.Equal(t, portOverrideSetHash(bare), portOverrideSetHash(echoed),
-		"same port number must hash identically regardless of echoed VLAN fields")
 
-	other := portOverrideData(map[string]interface{}{"number": 6})
-	assert.NotEqual(t, portOverrideSetHash(bare), portOverrideSetHash(other),
+	assert.NotEqual(t, portOverrideSetHash(bare),
+		portOverrideSetHash(portOverrideData(map[string]interface{}{"number": 6})),
 		"different port numbers must hash differently")
+	for field, value := range map[string]interface{}{
+		"name":                  "Uplink",
+		"forward":               "native",
+		"native_networkconf_id": "net-main",
+		"setting_preference":    "manual",
+		"poe_mode":              "off",
+		"excluded_network_ids":  stringSet("net-a"),
+	} {
+		edited := portOverrideData(map[string]interface{}{"number": 5, field: value})
+		assert.NotEqual(t, portOverrideSetHash(bare), portOverrideSetHash(edited),
+			"editing %s must change the element hash", field)
+	}
 
-	// Sanity: the hash must be a pure function of `number`.
-	assert.Equal(t, portOverrideSetHash(bare), portOverrideSetHash(bare))
+	assert.Equal(t, portOverrideSetHash(bare), portOverrideSetHash(map[string]interface{}{"number": 5}),
+		"zero values and omitted fields must hash identically")
+	assert.Equal(t, portOverrideSetHash(bare),
+		portOverrideSetHash(portOverrideData(map[string]interface{}{"number": 5, "op_mode": ""})),
+		"op_mode \"switch\" (config default) and \"\" (controller) must hash identically")
+	assert.Equal(t,
+		portOverrideSetHash(portOverrideData(map[string]interface{}{"number": 5, "excluded_network_ids": stringSet("a", "b")})),
+		portOverrideSetHash(portOverrideData(map[string]interface{}{"number": 5, "excluded_network_ids": stringSet("b", "a")})),
+		"nested set order must not change the hash")
+}
+
+func TestRadioSetHash_DeclaredFields(t *testing.T) {
+	base := map[string]interface{}{"name": "na", "channel": "149", "ht": 80, "tx_power_mode": "", "tx_power": "", "min_rssi": 0, "min_rssi_enabled": false}
+	assert.Equal(t, radioSetHash(base), radioSetHash(map[string]interface{}{"name": "na", "channel": "149", "ht": 80}),
+		"zero values and omitted fields must hash identically")
+	for field, value := range map[string]interface{}{"channel": "36", "ht": 40, "tx_power_mode": "medium", "min_rssi_enabled": true, "min_rssi": -75} {
+		edited := map[string]interface{}{}
+		for k, v := range base {
+			edited[k] = v
+		}
+		edited[field] = value
+		assert.NotEqual(t, radioSetHash(base), radioSetHash(edited), "editing %s must change the element hash", field)
+	}
+	assert.NotEqual(t, radioSetHash(map[string]interface{}{"name": "na"}), radioSetHash(map[string]interface{}{"name": "ng"}))
+}
+
+// The read path keeps only the fields the prior state/config declares on a
+// managed element, so a controller echo cannot move the hash, while drift on a
+// declared field still surfaces. Unmanaged ports (console-made overrides,
+// import) are read in full.
+func TestSetFromPortOverrides_DeclaredFieldsOnly(t *testing.T) {
+	controller := []unifi.DevicePortOverrides{
+		{PortIDX: 16, Name: "MacBook (hub Dell)", Forward: "native", NATiveNetworkID: "net-main", SettingPreference: "manual", PoeMode: "auto"},
+		{PortIDX: 1, Name: "Console-made", Forward: "all"},
+	}
+	prior := map[string]map[string]interface{}{
+		"16": portOverrideData(map[string]interface{}{"number": 16, "name": "old name", "forward": "native", "native_networkconf_id": "net-main"}),
+	}
+	got := setFromPortOverrides(controller, prior)
+	require.Len(t, got, 2)
+
+	managed, unmanaged := got[0], got[1]
+	assert.Equal(t, "MacBook (hub Dell)", managed["name"], "drift on a declared field must be read back")
+	assert.Equal(t, "native", managed["forward"])
+	assert.Equal(t, "net-main", managed["native_networkconf_id"])
+	assert.Equal(t, "", managed["setting_preference"], "undeclared echoed field must be dropped")
+	assert.Equal(t, "", managed["poe_mode"], "undeclared echoed field must be dropped")
+	assert.Equal(t, portOverrideSetHash(portOverrideData(map[string]interface{}{
+		"number": 16, "name": "MacBook (hub Dell)", "forward": "native", "native_networkconf_id": "net-main",
+	})), portOverrideSetHash(managed), "state element must hash like the matching config element")
+
+	assert.Equal(t, "Console-made", unmanaged["name"], "unmanaged override must be read in full")
+	assert.Equal(t, "all", unmanaged["forward"])
+}
+
+// TestDeviceSetInElementEditsPlan is the end-to-end regression for G22: an edit
+// inside an existing radio / port_override element must produce a diff, and a
+// config that matches state must not.
+func TestDeviceSetInElementEditsPlan(t *testing.T) {
+	r := ResourceDevice()
+	radioState := map[string]interface{}{"name": "na", "channel": "149", "ht": 80}
+	portState := portOverrideData(map[string]interface{}{"number": 16, "name": "Port 16", "forward": "native"})
+	rp := fmt.Sprintf("radio.%d.", radioSetHash(radioState))
+	pp := fmt.Sprintf("port_override.%d.", portOverrideSetHash(portState))
+	state := &terraform.InstanceState{ID: "dev1", Attributes: map[string]string{
+		"id": "dev1", "mac": "ac:8b:a9:67:26:45", "name": "ap", "allow_adoption": "true", "forget_on_destroy": "true",
+		"radio.#": "1", rp + "name": "na", rp + "channel": "149", rp + "ht": "80", rp + "tx_power_mode": "",
+		rp + "tx_power": "", rp + "min_rssi": "0", rp + "min_rssi_enabled": "false",
+		"port_override.#": "1", pp + "number": "16", pp + "name": "Port 16", pp + "op_mode": "switch", pp + "forward": "native",
+		pp + "excluded_network_ids.#": "0",
+	}}
+	config := func(radio, port map[string]interface{}) *terraform.ResourceConfig {
+		return terraform.NewResourceConfigRaw(map[string]interface{}{
+			"mac": "ac:8b:a9:67:26:45", "name": "ap", "allow_adoption": true, "forget_on_destroy": true,
+			"radio": []interface{}{radio}, "port_override": []interface{}{port},
+		})
+	}
+	changed := func(radio, port map[string]interface{}) bool {
+		d, err := r.SimpleDiff(context.Background(), state, config(radio, port), nil)
+		require.NoError(t, err)
+		return d != nil && len(d.Attributes) > 0
+	}
+	sameRadio := map[string]interface{}{"name": "na", "channel": "149", "ht": 80}
+	samePort := map[string]interface{}{"number": 16, "name": "Port 16", "forward": "native"}
+
+	assert.False(t, changed(sameRadio, samePort), "matching config must plan no changes")
+	assert.True(t, changed(map[string]interface{}{"name": "na", "channel": "149", "ht": 80, "tx_power_mode": "medium"}, samePort),
+		"radio tx_power_mode edit must plan a change")
+	assert.True(t, changed(map[string]interface{}{"name": "na", "channel": "36", "ht": 80}, samePort),
+		"radio channel edit must plan a change")
+	assert.True(t, changed(sameRadio, map[string]interface{}{"number": 16, "name": "Dock", "forward": "native"}),
+		"port_override name edit must plan a change")
+	assert.True(t, changed(sameRadio, map[string]interface{}{"number": 16, "name": "Port 16", "forward": "all"}),
+		"port_override forward edit must plan a change")
 }
 
 // The new VLAN attributes must be Optional+Computed so an undeclared field reads
